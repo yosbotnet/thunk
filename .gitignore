@@ -1,0 +1,13 @@
+/_build/
+/deps/
+/cover/
+/doc/
+/.elixir_ls/
+/.elixir-tools/
+/erl_crash.dump
+*.ez
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
