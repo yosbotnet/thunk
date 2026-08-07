@@ -17,7 +17,7 @@ defmodule Thunk.Eval do
 
   import Kernel, except: [apply: 3]
 
-  alias Thunk.{Context, Error, Primitives}
+  alias Thunk.{Context, Error, Primitives, Work}
 
   @type value :: term
 
@@ -61,6 +61,16 @@ defmodule Thunk.Eval do
   def eval([:let | _], _env, _ctx), do: raise(Error, "malformed let")
 
   def eval([:def | _], _env, _ctx), do: raise(Error, "def is only allowed at top level")
+
+  def eval([:dc, value, pred, split, base, merge], env, ctx) do
+    [value, pred, split, base, merge] =
+      Enum.map([value, pred, split, base, merge], &eval(&1, env, ctx))
+
+    work = %Work{value: value, pred: pred, split: split, base: base, merge: merge}
+    ctx.scheduler.solve(work, ctx)
+  end
+
+  def eval([:dc | _], _env, _ctx), do: raise(Error, "malformed dc")
 
   def eval([f | args], env, ctx) do
     callable = eval(f, env, ctx)
