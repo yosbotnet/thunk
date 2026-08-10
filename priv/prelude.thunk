@@ -1,0 +1,12 @@
+; Thunk prelude. Everything here is written in the language and is
+; loaded on every node before any program.
+
+; (fold f init xs) applies f to an accumulator and each element in turn.
+; It is the sequential building block; nothing here is parallel.
+(def fold (lambda (f init xs)
+  (if (nil? xs)
+    init
+    (fold f (f init (head xs)) (tail xs)))))
+
+(def length (lambda (xs)
+  (fold (lambda (acc x) (add acc 1)) 0 xs)))
