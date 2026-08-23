@@ -10,3 +10,51 @@
 
 (def length (lambda (xs)
   (fold (lambda (acc x) (add acc 1)) 0 xs)))
+
+(def reverse (lambda (xs)
+  (fold (lambda (acc x) (cons x acc)) () xs)))
+
+(def append (lambda (xs ys)
+  (fold (lambda (acc x) (cons x acc)) ys (reverse xs))))
+
+(def map (lambda (f xs)
+  (reverse (fold (lambda (acc x) (cons (f x) acc)) () xs))))
+
+(def filter (lambda (p xs)
+  (reverse (fold (lambda (acc x) (if (p x) (cons x acc) acc)) () xs))))
+
+; take-rev collects the first n elements in reverse order, so that take
+; runs in constant stack and reverses once at the end.
+(def take-rev (lambda (n xs acc)
+  (if (eq n 0)
+    acc
+    (if (nil? xs)
+      acc
+      (take-rev (sub n 1) (tail xs) (cons (head xs) acc))))))
+
+(def take (lambda (n xs)
+  (reverse (take-rev n xs ()))))
+
+(def drop (lambda (n xs)
+  (if (eq n 0)
+    xs
+    (if (nil? xs)
+      ()
+      (drop (sub n 1) (tail xs))))))
+
+(def split-at (lambda (n xs)
+  (cons (take n xs) (cons (drop n xs) ()))))
+
+(def halves (lambda (xs)
+  (split-at (div (length xs) 2) xs)))
+
+; Parallel library. dc is the only source of parallelism; pmap and
+; reduce are ordinary definitions on top of it. small? decides when a
+; list is solved directly and must be true for any list of length one.
+
+(def pmap (lambda (f xs small?)
+  (dc xs small? halves (lambda (v) (map f v)) append)))
+
+; reduce requires op to be associative. It is undefined on the empty list.
+(def reduce (lambda (op xs small?)
+  (dc xs small? halves (lambda (v) (fold op (head v) (tail v))) op)))
