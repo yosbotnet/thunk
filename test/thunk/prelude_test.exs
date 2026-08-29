@@ -79,4 +79,48 @@ defmodule Thunk.PreludeTest do
              ) == Enum.sum(Enum.map(xs, &(&1 * &1)))
     end
   end
+
+  describe "sorting" do
+    test "insert and insertion-sort", %{ctx: ctx} do
+      assert ev(ctx, "(insert 2 xs)", %{xs: [1, 3]}) == [1, 2, 3]
+      assert ev(ctx, "(insert 0 ())") == [0]
+      assert ev(ctx, "(insertion-sort xs)", %{xs: [3, 1, 2, 1]}) == [1, 1, 2, 3]
+      assert ev(ctx, "(insertion-sort ())") == []
+    end
+
+    test "merge-sorted", %{ctx: ctx} do
+      assert ev(ctx, "(merge-sorted xs ys)", %{xs: [1, 4, 9], ys: [2, 3, 10]}) ==
+               [1, 2, 3, 4, 9, 10]
+
+      assert ev(ctx, "(merge-sorted () ys)", %{ys: [1]}) == [1]
+      assert ev(ctx, "(merge-sorted xs ())", %{xs: [1]}) == [1]
+      assert ev(ctx, "(merge-sorted xs ys)", %{xs: [1, 1], ys: [1]}) == [1, 1, 1]
+    end
+  end
+
+  describe "strings and counting" do
+    test "split-words on codepoints", %{ctx: ctx} do
+      assert ev(ctx, "(split-words (chars s))", %{s: "the  quick\nbrown\tfox "}) ==
+               ["the", "quick", "brown", "fox"]
+
+      assert ev(ctx, "(split-words (chars s))", %{s: ""}) == []
+      assert ev(ctx, "(split-words (chars s))", %{s: "   "}) == []
+      assert ev(ctx, "(split-words (chars s))", %{s: "città"}) == ["città"]
+    end
+
+    test "association lists", %{ctx: ctx} do
+      al = [["a", 1], ["b", 2]]
+      assert ev(ctx, "(assoc-get k al 0)", %{k: "b", al: al}) == 2
+      assert ev(ctx, "(assoc-get k al 0)", %{k: "z", al: al}) == 0
+      assert ev(ctx, "(assoc-inc k 1 al)", %{k: "a", al: al}) == [["a", 2], ["b", 2]]
+      assert ev(ctx, "(assoc-inc k 5 al)", %{k: "c", al: al}) == [["a", 1], ["b", 2], ["c", 5]]
+
+      assert ev(ctx, "(assoc-merge a b)", %{a: al, b: [["b", 1], ["c", 1]]}) ==
+               [["a", 1], ["b", 3], ["c", 1]]
+    end
+
+    test "count-words", %{ctx: ctx} do
+      assert ev(ctx, "(count-words ws)", %{ws: ["a", "b", "a"]}) == [["a", 2], ["b", 1]]
+    end
+  end
 end
