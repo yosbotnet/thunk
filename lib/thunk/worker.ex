@@ -33,7 +33,7 @@ defmodule Thunk.Worker do
             timer: nil,
             backoff: 10,
             min_backoff: 10,
-            max_backoff: 500,
+            max_backoff: 100,
             stats: %{steals: 0, stolen_from: 0, evaluated: 0}
 
   # Client API
@@ -70,7 +70,7 @@ defmodule Thunk.Worker do
       limit: Keyword.get(opts, :limit, System.schedulers_online()),
       peers: Keyword.get(opts, :peers, []),
       min_backoff: Keyword.get(opts, :min_backoff, 10),
-      max_backoff: Keyword.get(opts, :max_backoff, 500),
+      max_backoff: Keyword.get(opts, :max_backoff, 100),
       prelude: Prelude.load()
     }
 
