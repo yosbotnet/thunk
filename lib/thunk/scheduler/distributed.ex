@@ -28,13 +28,26 @@ defmodule Thunk.Scheduler.Distributed do
       {left, right} = Scheduler.split(work, ctx)
       ref = make_ref()
       Worker.push(%Piece{work: right, ref: ref, reply_to: self(), job: ctx.job})
-      left_result = solve(left, ctx)
 
-      right_result =
-        case Worker.take_back(ref) do
-          {:ok, piece} -> solve(piece.work, ctx)
-          {:stolen, thief} -> await(ref, thief)
-          {:error, :unknown} -> raise Error, "piece #{inspect(ref)} vanished from the deque"
+      {left_result, right_result} =
+        try do
+          left_result = solve(left, ctx)
+
+          right_result =
+            case Worker.take_back(ref) do
+              {:ok, piece} -> solve(piece.work, ctx)
+              {:stolen, thief} -> await(ref, thief)
+              {:error, :unknown} -> raise Error, "piece #{inspect(ref)} vanished from the deque"
+            end
+
+          {left_result, right_result}
+        rescue
+          error ->
+            # A failing job must not leave its pieces behind for thieves
+            # to compute for nothing. Each frame withdraws its own piece
+            # as the error unwinds; a piece already taken is simply gone.
+            Worker.take_back(ref)
+            reraise error, __STACKTRACE__
         end
 
       Scheduler.merge(work, left_result, right_result, ctx)
