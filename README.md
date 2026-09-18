@@ -5,9 +5,11 @@ Individual project for Distributed Systems / Distributed Software Systems, Unive
 
 ## Status
 
-Milestone 1: the language, the interpreter, a sequential scheduler and a
-process-based local scheduler, with a prelude written in the language and
-two demos (mergesort and word count). No networking yet.
+Milestone 2: the language and interpreter from milestone 1, plus peer
+nodes with decentralized work stealing and a Docker Compose demo cluster.
+Every node is a peer; there is no coordinator. Worker failure recovery,
+termination detection, memoization, dynamic membership and a dashboard
+remain optional extensions.
 
 ## Approved scope
 
@@ -15,9 +17,6 @@ two demos (mergesort and word count). No networking yet.
 - Recursive task decomposition controlled by a size threshold.
 - Peer workers, decentralized work stealing, and combination of partial results.
 - Multi-node demonstration using Docker Compose.
-
-Worker failure recovery, Dijkstra-Scholten termination detection, memoization,
-dynamic membership, and a dashboard are optional extensions.
 
 ## The language
 
@@ -45,9 +44,35 @@ Thunk.run(ctx, [3, 1, 2])
 Thunk.run(Thunk.with_scheduler(ctx, Thunk.Scheduler.Local), [3, 1, 2])
 ```
 
+## Running on several nodes
+
+Every node is a peer. It keeps a deque of pieces of work, evaluates pieces
+itself up to a configurable limit, and when idle asks a random connected
+node for its oldest piece. A job is submitted from any node; the program's
+definitions travel with it, so only the prelude has to be on every node.
+
+Configuration is by environment: `THUNK_PEERS` (comma-separated node names
+to connect to at boot), `THUNK_LIMIT` (evaluators this node runs from its
+own deque, default the number of schedulers).
+
+Demo cluster with Docker Compose:
+
+```text
+docker compose up -d --build
+docker compose exec node1 sh -c 'elixir --sname client --cookie thunk-demo -S mix thunk.demo mergesort --size 20000 --threshold 500'
+docker compose down
+```
+
+`mix thunk.demo` also takes `wordcount`, `--repeat`, `--seed`, `--limit`
+and `--scheduler sequential|local|distributed`. Multi-node tests start peer
+nodes on the same machine and need a working `epmd`; they are skipped with
+a message if distribution cannot be started.
+
 ## Development
 
-Pinned versions: Elixir 1.20.4 on Erlang/OTP 29.1. No third-party dependencies.
+Pinned versions: Elixir 1.20.4 on Erlang/OTP 29.1, image
+`hexpm/elixir:1.20.4-erlang-29.1-debian-bookworm-20260918-slim`.
+No third-party dependencies.
 
 ```text
 mix format --check-formatted

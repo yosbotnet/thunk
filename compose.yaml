@@ -1,0 +1,22 @@
+services:
+  node1:
+    build: .
+    hostname: node1
+    environment:
+      THUNK_NODE: thunk
+      THUNK_COOKIE: thunk-demo
+      THUNK_PEERS: thunk@node2,thunk@node3
+  node2:
+    build: .
+    hostname: node2
+    environment:
+      THUNK_NODE: thunk
+      THUNK_COOKIE: thunk-demo
+      THUNK_PEERS: thunk@node1,thunk@node3
+  node3:
+    build: .
+    hostname: node3
+    environment:
+      THUNK_NODE: thunk
+      THUNK_COOKIE: thunk-demo
+      THUNK_PEERS: thunk@node1,thunk@node2
