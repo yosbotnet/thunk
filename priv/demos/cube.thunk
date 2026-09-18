@@ -1,0 +1,131 @@
+; A raytraced cube in fixed-point arithmetic.
+;
+; The language has integers only, so real numbers are stored scaled by
+; `one` (4096, twelve fractional bits). Vectors are three-element lists.
+; The cube is the axis-aligned box from -1 to 1 on every axis, seen from
+; a camera placed off all three axes so that three faces are visible.
+; Every pixel casts one ray and tests it against the box with the slab
+; method; the face the ray enters through gives the normal for shading.
+;
+; The image is rendered row by row: pmap over the row indices, so the
+; unit of parallel work is a bunch of rows.
+
+; Fixed point.
+
+(def one 4096)
+
+(def fx (lambda (n) (mul n one)))
+
+(def fx-frac (lambda (num den) (div (mul num one) den)))
+
+(def fx-mul (lambda (a b) (div (mul a b) one)))
+
+(def fx-div (lambda (a b) (div (mul a one) b)))
+
+; Vectors.
+
+(def vec (lambda (x y z) (cons x (cons y (cons z ())))))
+
+(def vx (lambda (v) (head v)))
+(def vy (lambda (v) (head (tail v))))
+(def vz (lambda (v) (head (tail (tail v)))))
+
+(def v-add (lambda (a b)
+  (vec (add (vx a) (vx b)) (add (vy a) (vy b)) (add (vz a) (vz b)))))
+
+(def v-sub (lambda (a b)
+  (vec (sub (vx a) (vx b)) (sub (vy a) (vy b)) (sub (vz a) (vz b)))))
+
+(def v-neg (lambda (v) (v-sub (vec 0 0 0) v)))
+
+(def v-scale (lambda (v k)
+  (vec (fx-mul (vx v) k) (fx-mul (vy v) k) (fx-mul (vz v) k))))
+
+(def v-dot (lambda (a b)
+  (add (fx-mul (vx a) (vx b)) (add (fx-mul (vy a) (vy b)) (fx-mul (vz a) (vz b))))))
+
+(def v-cross (lambda (a b)
+  (vec (sub (fx-mul (vy a) (vz b)) (fx-mul (vz a) (vy b)))
+       (sub (fx-mul (vz a) (vx b)) (fx-mul (vx a) (vz b)))
+       (sub (fx-mul (vx a) (vy b)) (fx-mul (vy a) (vx b))))))
+
+; The dot product is already scaled by one, so the root of (dot * one)
+; is the length scaled by one.
+(def v-len (lambda (v) (isqrt (mul (v-dot v v) one))))
+
+(def v-norm (lambda (v)
+  (let l (v-len v)
+    (vec (fx-div (vx v) l) (fx-div (vy v) l) (fx-div (vz v) l)))))
+
+; Scene. These are values, computed once when the program is loaded.
+
+(def eye (vec (fx 3) (fx-frac 22 10) (fx 4)))
+(def forward (v-norm (v-sub (vec 0 0 0) eye)))
+(def right (v-norm (v-cross forward (vec 0 one 0))))
+(def up (v-cross right forward))
+(def light (v-norm (vec (fx-frac 5 10) one (fx-frac 7 10))))
+(def far-away (mul one 100000))
+
+; Direction of the ray through pixel (i j) of a w by h image. The view
+; spans 0.4 units left and right at unit distance; rows use the same
+; scale so pixels stay square.
+(def ray-dir (lambda (i j w h)
+  (let u (div (mul (fx (sub (add (mul 2 i) 1) w)) 4) (mul w 10))
+    (let v (div (mul (fx (sub h (add (mul 2 j) 1))) 4) (mul w 10))
+      (v-add forward (v-add (v-scale right u) (v-scale up v)))))))
+
+; Slab test on one axis: the interval of t where the ray is between -1
+; and 1 on that axis, as a (near far) pair. A ray parallel to the axis
+; is either always inside or never.
+(def slab (lambda (o d)
+  (if (eq d 0)
+    (if (lt o (sub 0 one))
+      (cons far-away (cons (sub 0 far-away) ()))
+      (if (lt one o)
+        (cons far-away (cons (sub 0 far-away) ()))
+        (cons (sub 0 far-away) (cons far-away ()))))
+    (let t1 (fx-div (sub (sub 0 one) o) d)
+      (let t2 (fx-div (sub one o) d)
+        (cons (min t1 t2) (cons (max t1 t2) ())))))))
+
+(def near (lambda (s) (head s)))
+(def far (lambda (s) (head (tail s))))
+
+; The normal of the face the ray enters: the axis whose slab is entered
+; last, pointing against the ray.
+(def signed (lambda (axis dcomp) (if (lt dcomp 0) axis (v-neg axis))))
+
+(def face-normal (lambda (sx sy sz tmin d)
+  (if (eq (near sx) tmin)
+    (signed (vec one 0 0) (vx d))
+    (if (eq (near sy) tmin)
+      (signed (vec 0 one 0) (vy d))
+      (signed (vec 0 0 one) (vz d))))))
+
+; Flat shading: 15 percent ambient plus 85 percent diffuse, as a grey
+; level from 0 to 255.
+(def shade (lambda (n)
+  (let diffuse (max 0 (v-dot n light))
+    (min 255 (div (mul 255 (add (div (mul one 15) 100) (div (mul diffuse 85) 100))) one)))))
+
+(def background (lambda (j h) (add 16 (div (mul 48 j) h))))
+
+(def pixel (lambda (i j w h)
+  (let d (ray-dir i j w h)
+    (let sx (slab (vx eye) (vx d))
+      (let sy (slab (vy eye) (vy d))
+        (let sz (slab (vz eye) (vz d))
+          (let tmin (max (near sx) (max (near sy) (near sz)))
+            (let tmax (min (far sx) (min (far sy) (far sz)))
+              (if (lt tmax tmin)
+                (background j h)
+                (if (lt tmax 0)
+                  (background j h)
+                  (shade (face-normal sx sy sz tmin d))))))))))))
+
+(def render-row (lambda (j w h)
+  (map (lambda (i) (pixel i j w h)) (range 0 w))))
+
+; (render w h small?) gives the rows of the image, top row first.
+(def render (lambda (w h small?)
+  (pmap (lambda (j) (render-row j w h)) (range 0 h) small?)))

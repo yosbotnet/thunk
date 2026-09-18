@@ -64,7 +64,11 @@ docker compose down
 ```
 
 `mix thunk.demo` also takes `wordcount`, `--repeat`, `--seed`, `--limit`
-and `--scheduler sequential|local|distributed`. Multi-node tests start peer
+and `--scheduler sequential|local|distributed`. A third demo, `cube`, is a
+raytracer written in the language with fixed-point arithmetic
+(`priv/demos/cube.thunk`): `mix thunk.demo cube --width 640 --height 480`
+renders the image row by row across the cluster, writes `cube.bmp` and
+prints a preview. Multi-node tests start peer
 nodes on the same machine and need a working `epmd`; they are skipped with
 a message if distribution cannot be started.
 

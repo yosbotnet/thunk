@@ -135,3 +135,25 @@
 ; divided. Splitting the text itself in parallel is a later refinement.
 (def word-count (lambda (text small?)
   (dc (split-words (chars text)) small? halves count-words assoc-merge)))
+
+; Integers and ranges.
+
+(def max (lambda (a b) (if (lt a b) b a)))
+
+(def min (lambda (a b) (if (lt a b) a b)))
+
+; (range from to) is the list from, from+1, ..., to-1.
+(def range-rev (lambda (i to acc)
+  (if (lt i to) (range-rev (add i 1) to (cons i acc)) acc)))
+
+(def range (lambda (from to)
+  (reverse (range-rev from to ()))))
+
+; Integer square root by Newton's method, starting from n and going
+; down until the estimate stops decreasing.
+(def isqrt-iter (lambda (n x)
+  (let y (div (add x (div n x)) 2)
+    (if (lt y x) (isqrt-iter n y) x))))
+
+(def isqrt (lambda (n)
+  (if (lt n 2) n (isqrt-iter n n))))

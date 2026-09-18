@@ -1,34 +1,44 @@
 defmodule Mix.Tasks.Thunk.Demo do
-  @shortdoc "Runs the mergesort or word count demo and reports timings"
+  @shortdoc "Runs the mergesort, word count or cube demo and reports timings"
 
   @moduledoc """
   Runs a demo job and prints, for each repetition, the elapsed time, a
-  check against a native Elixir computation, and the steal counters of
-  every node.
+  check of the result, and the steal counters of every node.
 
       mix thunk.demo mergesort --size 20000 --threshold 500 --repeat 3
       mix thunk.demo wordcount --size 20000 --threshold 500
+      mix thunk.demo cube --width 320 --height 240 --threshold 8
 
-  Options: --size (elements or words, default 10000), --threshold (pieces
-  smaller than this are solved directly, default 500), --repeat (default
-  1), --seed (default 1), --scheduler sequential|local|distributed
-  (default distributed), --limit (evaluators this node may run itself,
-  default 0 for distributed so that all work goes to the peers), --wait
-  (seconds to wait for at least one peer, default 10).
+  Mergesort and word count are checked against native Elixir. The cube
+  is a raytraced image (priv/demos/cube.thunk): its rows are checked for
+  shape and range, the picture is written to a BMP file (--out, default
+  cube.bmp) and previewed in the terminal.
+
+  Options: --size (elements or words, default 10000), --width and
+  --height (cube, default 160 by 120), --threshold (pieces smaller than
+  this are solved directly: elements, words or rows; default 500, or 8
+  for the cube), --repeat (default 1), --seed (default 1), --scheduler
+  sequential|local|distributed (default distributed), --limit
+  (evaluators this node may run itself, default 0 for distributed so
+  that all work goes to the peers), --wait (seconds to wait for at least
+  one peer, default 10), --out (cube image path).
   """
 
   use Mix.Task
 
-  alias Thunk.{Cluster, Worker}
+  alias Thunk.{Cluster, Image, Worker}
 
   @switches [
     size: :integer,
+    width: :integer,
+    height: :integer,
     threshold: :integer,
     repeat: :integer,
     seed: :integer,
     scheduler: :string,
     limit: :integer,
-    wait: :integer
+    wait: :integer,
+    out: :string
   ]
 
   @impl true
@@ -39,13 +49,13 @@ defmodule Mix.Tasks.Thunk.Demo do
       case rest do
         ["mergesort"] -> :mergesort
         ["wordcount"] -> :wordcount
-        _ -> Mix.raise("usage: mix thunk.demo mergesort|wordcount [options]")
+        ["cube"] -> :cube
+        _ -> Mix.raise("usage: mix thunk.demo mergesort|wordcount|cube [options]")
       end
 
     Mix.Task.run("app.start")
 
-    size = opts[:size] || 10_000
-    threshold = opts[:threshold] || 500
+    threshold = opts[:threshold] || if(demo == :cube, do: 8, else: 500)
     repeat = opts[:repeat] || 1
     seed = opts[:seed] || 1
     scheduler = String.to_atom(opts[:scheduler] || "distributed")
@@ -62,12 +72,12 @@ defmodule Mix.Tasks.Thunk.Demo do
     end
 
     for i <- 1..repeat do
-      input = input(demo, size, seed + i)
+      input = input(demo, opts, seed + i)
       {micros, result} = :timer.tc(fn -> Thunk.run(ctx, input) end)
       ok = if check(demo, input, result), do: "ok", else: "MISMATCH"
 
       Mix.shell().info(
-        "run #{i}: #{demo} size=#{size} threshold=#{threshold} #{ok} #{div(micros, 1000)} ms"
+        "run #{i}: #{demo} #{describe(demo, input)} threshold=#{threshold} #{ok} #{div(micros, 1000)} ms"
       )
 
       for node <- [node() | Node.list()] do
@@ -77,6 +87,8 @@ defmodule Mix.Tasks.Thunk.Demo do
           "  #{node}: steals=#{s.steals} stolen_from=#{s.stolen_from} evaluated=#{s.evaluated}"
         )
       end
+
+      if demo == :cube and i == repeat, do: save_image(result, opts[:out] || "cube.bmp")
     end
   end
 
@@ -99,20 +111,44 @@ defmodule Mix.Tasks.Thunk.Demo do
   defp program(:wordcount, t),
     do: "(def main (lambda (text) (word-count text (lambda (v) (lt (length v) #{t})))))"
 
-  defp input(:mergesort, size, seed) do
-    :rand.seed(:exsss, {seed, seed, seed})
-    for _ <- 1..size, do: :rand.uniform(1_000_000)
+  defp program(:cube, t) do
+    source = File.read!(Path.join(to_string(:code.priv_dir(:thunk)), "demos/cube.thunk"))
+
+    source <>
+      "(def main (lambda (dims) (render (head dims) (head (tail dims)) (lambda (rows) (lt (length rows) #{t})))))"
   end
 
-  defp input(:wordcount, size, seed) do
+  defp input(:mergesort, opts, seed) do
+    :rand.seed(:exsss, {seed, seed, seed})
+    for _ <- 1..(opts[:size] || 10_000), do: :rand.uniform(1_000_000)
+  end
+
+  defp input(:wordcount, opts, seed) do
     :rand.seed(:exsss, {seed, seed, seed})
     words = ~w(alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu)
-    Enum.map_join(1..size, " ", fn _ -> Enum.random(words) end)
+    Enum.map_join(1..(opts[:size] || 10_000), " ", fn _ -> Enum.random(words) end)
   end
+
+  defp input(:cube, opts, _seed), do: [opts[:width] || 160, opts[:height] || 120]
+
+  defp describe(:cube, [w, h]), do: "#{w}x#{h}"
+  defp describe(:mergesort, xs), do: "size=#{length(xs)}"
+  defp describe(:wordcount, text), do: "size=#{length(String.split(text))}"
 
   defp check(:mergesort, input, result), do: result == Enum.sort(input)
 
   defp check(:wordcount, input, result) do
     Map.new(result, fn [w, n] -> {w, n} end) == Enum.frequencies(String.split(input))
+  end
+
+  defp check(:cube, [w, h], rows) do
+    length(rows) == h and Enum.all?(rows, &(length(&1) == w)) and
+      Enum.all?(List.flatten(rows), &(&1 in 0..255))
+  end
+
+  defp save_image(rows, path) do
+    File.write!(path, Image.bmp(rows))
+    Mix.shell().info("image written to #{path}")
+    Enum.each(Image.ascii(rows, 80), fn line -> Mix.shell().info(line) end)
   end
 end
