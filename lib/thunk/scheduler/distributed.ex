@@ -12,11 +12,15 @@ defmodule Thunk.Scheduler.Distributed do
 
   Failures travel by monitor. The owner watches the thief's worker until
   it learns which evaluator has the piece, then that evaluator. If either
-  dies the owner raises, re-raising the original language error when
-  there was one.
+  dies because of a language error the owner re-raises that error, since
+  the program is deterministic and would fail again. If it dies for any
+  other reason, a crashed process or a lost node, the owner solves the
+  piece again itself: it is pure, so the result is the same.
   """
 
   @behaviour Thunk.Scheduler
+
+  require Logger
 
   alias Thunk.{Context, Error, Piece, Scheduler, Worker}
 
@@ -35,9 +39,28 @@ defmodule Thunk.Scheduler.Distributed do
 
           right_result =
             case Worker.take_back(ref) do
-              {:ok, piece} -> solve(piece.work, ctx)
-              {:stolen, thief} -> await(ref, thief)
-              {:error, :unknown} -> raise Error, "piece #{inspect(ref)} vanished from the deque"
+              {:ok, piece} ->
+                solve(piece.work, ctx)
+
+              {:stolen, thief} ->
+                case await(ref, thief) do
+                  {:ok, value} ->
+                    value
+
+                  {:lost, reason} ->
+                    # The thief died before answering. The piece is pure,
+                    # so solving it again here gives the same result the
+                    # thief would have produced.
+                    Logger.warning(
+                      "piece #{inspect(ref)} lost (#{inspect(reason)}), solving it again"
+                    )
+
+                    Worker.recovered()
+                    solve(right, ctx)
+                end
+
+              {:error, :unknown} ->
+                raise Error, "piece #{inspect(ref)} vanished from the deque"
             end
 
           {left_result, right_result}
@@ -80,6 +103,8 @@ defmodule Thunk.Scheduler.Distributed do
   end
 
   # The owner side of a stolen piece. `thief` is the worker that took it.
+  # Gives {:ok, value}, or {:lost, reason} when the piece can be solved
+  # again; a language error is raised instead.
   defp await(ref, thief) do
     mon = Process.monitor(thief)
 
@@ -87,25 +112,36 @@ defmodule Thunk.Scheduler.Distributed do
       {:result, ^ref, value} ->
         Process.demonitor(mon, [:flush])
         flush_claimed(ref)
-        value
+        {:ok, value}
 
       {:claimed, ^ref, evaluator} ->
         Process.demonitor(mon, [:flush])
         await_result(ref, Process.monitor(evaluator))
 
+      {:failed, ^ref, reason} ->
+        Process.demonitor(mon, [:flush])
+        lost(reason)
+
       {:DOWN, ^mon, :process, _pid, reason} ->
-        lost(ref, reason)
+        lost(reason)
     end
   end
 
+  # The thief's worker reports the exit reason of a dead evaluator with a
+  # failed message, which arrives before any monitor of ours could fire;
+  # the monitor only matters when the whole node is gone.
   defp await_result(ref, mon) do
     receive do
       {:result, ^ref, value} ->
         Process.demonitor(mon, [:flush])
-        value
+        {:ok, value}
+
+      {:failed, ^ref, reason} ->
+        Process.demonitor(mon, [:flush])
+        lost(reason)
 
       {:DOWN, ^mon, :process, _pid, reason} ->
-        lost(ref, reason)
+        lost(reason)
     end
   end
 
@@ -119,9 +155,6 @@ defmodule Thunk.Scheduler.Distributed do
     end
   end
 
-  defp lost(_ref, {%Error{} = error, _stacktrace}), do: raise(error)
-
-  defp lost(ref, reason) do
-    raise Error, "piece #{inspect(ref)} lost: #{inspect(reason)}"
-  end
+  defp lost({%Error{} = error, _stacktrace}), do: raise(error)
+  defp lost(reason), do: {:lost, reason}
 end

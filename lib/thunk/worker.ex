@@ -34,7 +34,7 @@ defmodule Thunk.Worker do
             backoff: 10,
             min_backoff: 10,
             max_backoff: 100,
-            stats: %{steals: 0, stolen_from: 0, evaluated: 0}
+            stats: %{steals: 0, stolen_from: 0, evaluated: 0, recovered: 0}
 
   # Client API
 
@@ -55,6 +55,9 @@ defmodule Thunk.Worker do
   @doc "The context to evaluate a piece of `job` on this node, if known."
   @spec job_context(Context.job()) :: {:ok, Context.t()} | :unknown
   def job_context(job), do: GenServer.call(@name, {:job_context, job})
+
+  @doc "Records that an evaluator on this node solved a lost piece again."
+  def recovered, do: GenServer.cast(@name, :recovered)
 
   def prelude, do: GenServer.call(@name, :prelude)
   def set_limit(n) when is_integer(n) and n >= 0, do: GenServer.call(@name, {:set_limit, n})
@@ -141,6 +144,10 @@ defmodule Thunk.Worker do
     {:noreply, balance(%{state | queue: :queue.in(piece, state.queue)})}
   end
 
+  def handle_cast(:recovered, state) do
+    {:noreply, %{state | stats: Map.update!(state.stats, :recovered, &(&1 + 1))}}
+  end
+
   def handle_cast({:steal, thief}, state) do
     case :queue.out(state.queue) do
       {{:value, piece}, queue} ->
@@ -193,14 +200,24 @@ defmodule Thunk.Worker do
     {:noreply, balance(state)}
   end
 
-  def handle_info({:DOWN, _mon, :process, pid, _reason}, state) do
-    state = %{
-      state
-      | running: Map.delete(state.running, pid),
-        stats: Map.update!(state.stats, :evaluated, &(&1 + 1))
-    }
+  def handle_info({:DOWN, _mon, :process, pid, reason}, state) do
+    case Map.pop(state.running, pid) do
+      {nil, _} ->
+        {:noreply, state}
 
-    {:noreply, balance(state)}
+      {{_mon, piece}, running} ->
+        # Tell the owner why its piece died, so it can tell a broken
+        # program (re-raise) from a crashed process (solve it again).
+        if reason != :normal, do: send(piece.reply_to, {:failed, piece.ref, reason})
+
+        state = %{
+          state
+          | running: running,
+            stats: Map.update!(state.stats, :evaluated, &(&1 + 1))
+        }
+
+        {:noreply, balance(state)}
+    end
   end
 
   def handle_info(:connect, state) do
@@ -251,7 +268,7 @@ defmodule Thunk.Worker do
 
     send(piece.reply_to, {:claimed, piece.ref, pid})
     mon = Process.monitor(pid)
-    %{state | running: Map.put(state.running, pid, mon)}
+    %{state | running: Map.put(state.running, pid, {mon, piece})}
   end
 
   defp maybe_steal(%{steal: nil, timer: nil} = state) do

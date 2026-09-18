@@ -23,8 +23,12 @@ defmodule Thunk.Scheduler.DistributedTest do
     GenServer.cast(Worker, {:steal, self()})
 
     receive do
-      {:piece, _piece} -> send(owner, :thief_has_it)
-      :none -> steal_until_piece(owner)
+      {:piece, piece} ->
+        send(owner, :thief_has_it)
+        piece
+
+      :none ->
+        steal_until_piece(owner)
     end
   end
 
@@ -63,9 +67,10 @@ defmodule Thunk.Scheduler.DistributedTest do
     assert_raise Error, ~r/bad arguments to head/, fn -> Thunk.eval(crash, ctx) end
   end
 
-  test "a piece stolen by a process that dies makes the owner fail" do
+  test "a piece stolen by a process that dies is solved again by the owner" do
     ctx = ctx(0)
     owner = self()
+    %{recovered: before} = Worker.stats()
 
     # A fake thief: keeps asking until it gets a piece, then dies without
     # ever claiming it. The job is big enough that its right half sits in
@@ -73,15 +78,39 @@ defmodule Thunk.Scheduler.DistributedTest do
     thief = spawn(fn -> steal_until_piece(owner) end)
 
     program = "(dc 200000 #{@small} #{@split} (lambda (n) n) add)"
+    task = Task.async(fn -> Thunk.eval(program, ctx) end)
+
+    assert_receive :thief_has_it, 1_000
+    assert Task.await(task, 10_000) == 200_000
+    refute Process.alive?(thief)
+    assert Worker.stats().recovered > before
+  end
+
+  test "a language error in a stolen piece is not retried" do
+    ctx = ctx(0)
+    owner = self()
+    %{recovered: before} = Worker.stats()
+
+    # This thief plays a worker whose evaluator died with a language
+    # error: it claims the piece, then reports the failure the way a
+    # worker does. The owner must re-raise it rather than solve the piece
+    # again.
+    spawn(fn ->
+      piece = steal_until_piece(owner)
+      send(piece.reply_to, {:claimed, piece.ref, self()})
+      send(piece.reply_to, {:failed, piece.ref, {%Error{message: "boom"}, []}})
+    end)
+
+    program = "(dc 200000 #{@small} #{@split} (lambda (n) n) add)"
 
     task =
       Task.async(fn ->
-        assert_raise Error, ~r/lost/, fn -> Thunk.eval(program, ctx) end
+        assert_raise Error, ~r/boom/, fn -> Thunk.eval(program, ctx) end
       end)
 
     assert_receive :thief_has_it, 1_000
-    Task.await(task, 5_000)
-    refute Process.alive?(thief)
+    Task.await(task, 10_000)
+    assert Worker.stats().recovered == before
   end
 
   test "run_piece sends the result to the owner and uses the job's definitions" do

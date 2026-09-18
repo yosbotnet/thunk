@@ -84,7 +84,7 @@ defmodule Mix.Tasks.Thunk.Demo do
         s = Worker.stats(node)
 
         Mix.shell().info(
-          "  #{node}: steals=#{s.steals} stolen_from=#{s.stolen_from} evaluated=#{s.evaluated}"
+          "  #{node}: steals=#{s.steals} stolen_from=#{s.stolen_from} evaluated=#{s.evaluated} recovered=#{s.recovered}"
         )
       end
 

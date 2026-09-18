@@ -7,9 +7,10 @@ Individual project for Distributed Systems / Distributed Software Systems, Unive
 
 Milestone 2: the language and interpreter from milestone 1, plus peer
 nodes with decentralized work stealing and a Docker Compose demo cluster.
-Every node is a peer; there is no coordinator. Worker failure recovery,
-termination detection, memoization, dynamic membership and a dashboard
-remain optional extensions.
+Every node is a peer; there is no coordinator. A piece of work whose
+thief crashes or whose node disappears is solved again by its owner, so a
+job survives losing nodes mid-run. Termination detection, memoization,
+dynamic membership and a dashboard remain optional extensions.
 
 ## Approved scope
 

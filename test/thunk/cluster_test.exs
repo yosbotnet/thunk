@@ -61,36 +61,37 @@ defmodule Thunk.ClusterTest do
     end
   end
 
-  test "a peer dying mid job makes the job fail instead of hanging" do
+  test "a peer dying mid job loses nothing: its pieces are solved again" do
     victim = TestCluster.start_peer(:node4, limit: 8)
     :ok = Cluster.wait_for_peers(3, 10_000)
+    before = Enum.sum(for n <- [node() | Node.list()], do: Worker.stats(n).recovered)
 
-    # base cases spin for a while so the victim is busy when it is killed
+    # base cases spin for a while so that the job lasts several seconds
+    # and the victim, with the most capacity, is holding pieces when it
+    # is killed
     program = """
     (def spin (lambda (n) (if (eq n 0) 0 (spin (sub n 1)))))
     (def main (lambda (xs)
       (dc xs (lambda (v) (lt (length v) 4)) halves
-          (lambda (v) (let z (spin 300000) v))
+          (lambda (v) (let z (spin 1000000) v))
           append)))
     """
 
     ctx = Cluster.load(program)
 
     Task.start(fn ->
-      Process.sleep(500)
+      Process.sleep(1_500)
       TestCluster.stop_peer(victim)
     end)
 
-    result =
-      try do
-        {:ok, Cluster.run(ctx, Enum.to_list(1..64))}
-      rescue
-        e in Error -> {:error, e}
-      end
+    assert Cluster.run(ctx, Enum.to_list(1..256)) == Enum.to_list(1..256)
 
-    case result do
-      {:error, %Error{message: message}} -> assert message =~ "lost"
-      {:ok, value} -> assert value == Enum.to_list(1..64)
-    end
+    # Recoveries are counted on the node whose evaluator re-solved the
+    # piece; the victim held pieces from the test node and from the
+    # other peers, so at least one of them must have recovered something.
+    recovered =
+      Enum.sum(for n <- [node() | Node.list()], do: Worker.stats(n).recovered) - before
+
+    assert recovered > 0
   end
 end
