@@ -1,10 +1,15 @@
 defmodule Thunk.CubeTest do
   use ExUnit.Case, async: true
 
+  import Bitwise
+
   alias Thunk.Image
   alias Thunk.Scheduler.{Local, Sequential}
 
-  @main "(def main (lambda (dims) (render (head dims) (head (tail dims)) (lambda (rows) (lt (length rows) 4)))))"
+  @main "(def main (lambda (dims) (render (head dims) (head (tail dims)) (head (tail (tail dims))) (lambda (rows) (lt (length rows) 4)))))"
+
+  # The orbit angle that puts the camera at (3, 2.2, 4), atan(4/3).
+  @angle 3798
 
   setup_all do
     program = File.read!(Path.join(:code.priv_dir(:thunk), "demos/cube.thunk")) <> @main
@@ -12,6 +17,10 @@ defmodule Thunk.CubeTest do
   end
 
   defp ev(ctx, source, env \\ %{}), do: Thunk.eval(source, ctx, env)
+
+  defp render(ctx, scheduler, w, h, angle) do
+    Thunk.run(Thunk.with_scheduler(ctx, scheduler), [w, h, angle])
+  end
 
   test "prelude helpers used by the renderer", %{ctx: ctx} do
     assert ev(ctx, "(range 0 4)") == [0, 1, 2, 3]
@@ -33,9 +42,32 @@ defmodule Thunk.CubeTest do
     assert ev(ctx, "(v-len (v-norm (vec (fx 3) (fx 4) (fx 12))))") in 4090..4096
   end
 
+  test "sine and cosine in fixed point", %{ctx: ctx} do
+    # within about a hundredth over the whole circle, including angles
+    # that need wrapping
+    for degrees <- Enum.take_every(-360..720, 15) do
+      radians = degrees * :math.pi() / 180
+      angle = round(radians * 4096)
+      assert_in_delta ev(ctx, "(sin a)", %{a: angle}) / 4096, :math.sin(radians), 0.01
+      assert_in_delta ev(ctx, "(cos a)", %{a: angle}) / 4096, :math.cos(radians), 0.01
+    end
+  end
+
+  test "the camera orbits at constant distance", %{ctx: ctx} do
+    for angle <- [0, 3798, 10_000, 20_000] do
+      eye = ev(ctx, "(eye-at a)", %{a: angle})
+      assert_in_delta ev(ctx, "(v-len e)", %{e: eye}) / 4096, :math.sqrt(25 + 2.2 * 2.2), 0.02
+    end
+
+    assert ev(ctx, "(eye-at a)", %{a: @angle})
+           |> Enum.map(&(&1 / 4096))
+           |> Enum.map(&Float.round(&1, 1)) ==
+             [3.0, 2.2, 4.0]
+  end
+
   test "sequential and local schedulers render the same image", %{ctx: ctx} do
-    seq = Thunk.run(Thunk.with_scheduler(ctx, Sequential), [32, 24])
-    local = Thunk.run(Thunk.with_scheduler(ctx, Local), [32, 24])
+    seq = render(ctx, Sequential, 32, 24, @angle)
+    local = render(ctx, Local, 32, 24, @angle)
     assert seq == local
     assert length(seq) == 24
     assert Enum.all?(seq, &(length(&1) == 32))
@@ -43,11 +75,22 @@ defmodule Thunk.CubeTest do
   end
 
   test "the cube is lit in the middle and the corners are background", %{ctx: ctx} do
-    rows = Thunk.run(Thunk.with_scheduler(ctx, Sequential), [32, 24])
+    rows = render(ctx, Sequential, 32, 24, @angle)
     centre = rows |> Enum.at(12) |> Enum.at(16)
     corner = rows |> Enum.at(0) |> Enum.at(0)
     assert centre > 100
     assert corner < 80
+  end
+
+  test "different angles give different frames with the cube still in view", %{ctx: ctx} do
+    a = render(ctx, Sequential, 32, 24, @angle)
+    b = render(ctx, Sequential, 32, 24, @angle + 6434)
+    assert a != b
+    # from this side the centre ray meets a face in shadow, which is the
+    # ambient level, still distinct from the background of that row
+    assert b |> Enum.at(12) |> Enum.at(16) != 16 + div(48 * 12, 24)
+    # the top face is lit from every angle
+    assert Enum.max(List.flatten(b)) > 150
   end
 
   test "bmp encoding" do
@@ -61,6 +104,22 @@ defmodule Thunk.CubeTest do
     assert binary_part(bmp, 54, 9) == <<255, 255, 255, 128, 128, 128, 0, 0, 0>>
   end
 
+  test "gif encoding round trips through a nine-bit decoder" do
+    frame1 = for j <- 0..3, do: for(i <- 0..299, do: rem(i + j, 256))
+    frame2 = Enum.map(frame1, &Enum.reverse/1)
+    gif = Image.gif([frame1, frame2], 5)
+
+    assert <<"GIF89a", 300::little-16, 4::little-16, 0xF7, 0, 0, _::binary>> = gif
+    assert :binary.last(gif) == 0x3B
+
+    # skip the screen descriptor, the palette and the loop extension
+    rest = binary_part(gif, 13 + 768 + 19, byte_size(gif) - 13 - 768 - 19)
+    {pixels1, rest} = decode_frame(rest)
+    {pixels2, <<0x3B>>} = decode_frame(rest)
+    assert pixels1 == List.flatten(frame1)
+    assert pixels2 == List.flatten(frame2)
+  end
+
   test "ascii preview" do
     rows = for j <- 0..7, do: for(_ <- 0..15, do: j * 32)
     # 16 columns into 8 means every second pixel, and every fourth row
@@ -69,4 +128,36 @@ defmodule Thunk.CubeTest do
     assert Enum.all?(lines, &(String.length(&1) == 8))
     assert hd(lines) != List.last(lines)
   end
+
+  # A decoder for the encoder's own scheme: reads the control extension
+  # and image descriptor, gathers the sub-blocks, unpacks nine-bit codes
+  # and drops the clear and end codes.
+  defp decode_frame(
+         <<0x21, 0xF9, 4, _::binary-size(4), 0, 0x2C, _::binary-size(9), 8, rest::binary>>
+       ) do
+    {data, rest} = sub_blocks(rest, [])
+
+    pixels =
+      data
+      |> :binary.bin_to_list()
+      |> Enum.reduce({0, 0, []}, fn byte, {buffer, bits, codes} ->
+        take_codes(bor(buffer, bsl(byte, bits)), bits + 8, codes)
+      end)
+      |> elem(2)
+      |> Enum.reverse()
+      |> Enum.reject(&(&1 >= 256))
+
+    {pixels, rest}
+  end
+
+  defp take_codes(buffer, bits, codes) when bits >= 9 do
+    take_codes(bsr(buffer, 9), bits - 9, [band(buffer, 0x1FF) | codes])
+  end
+
+  defp take_codes(buffer, bits, codes), do: {buffer, bits, codes}
+
+  defp sub_blocks(<<0, rest::binary>>, acc), do: {IO.iodata_to_binary(Enum.reverse(acc)), rest}
+
+  defp sub_blocks(<<n, chunk::binary-size(n), rest::binary>>, acc),
+    do: sub_blocks(rest, [chunk | acc])
 end

@@ -57,22 +57,63 @@
   (let l (v-len v)
     (vec (fx-div (vx v) l) (fx-div (vy v) l) (fx-div (vz v) l)))))
 
-; Scene. These are values, computed once when the program is loaded.
+; Trigonometry, for the camera orbit. Angles are radians scaled by one.
 
-(def eye (vec (fx 3) (fx-frac 22 10) (fx 4)))
-(def forward (v-norm (v-sub (vec 0 0 0) eye)))
-(def right (v-norm (v-cross forward (vec 0 one 0))))
-(def up (v-cross right forward))
+(def pi 12868)
+(def two-pi 25736)
+(def half-pi 6434)
+
+; Brings an angle into the interval from -pi to pi.
+(def wrap (lambda (x)
+  (if (lt pi x)
+    (wrap (sub x two-pi))
+    (if (lt x (sub 0 pi))
+      (wrap (add x two-pi))
+      x))))
+
+; Five terms of the Taylor series, good to about three decimals over
+; the whole interval.
+(def sin (lambda (a)
+  (let x (wrap a)
+    (let x2 (fx-mul x x)
+      (let x3 (fx-mul x2 x)
+        (let x5 (fx-mul x3 x2)
+          (let x7 (fx-mul x5 x2)
+            (let x9 (fx-mul x7 x2)
+              (add (sub x (div x3 6))
+                   (sub (div x5 120) (sub (div x7 5040) (div x9 362880))))))))))))
+
+(def cos (lambda (a) (sin (add a half-pi))))
+
+; Scene. The light and the size of the world are fixed; the camera
+; orbits the cube at height 2.2, five units from the vertical axis, and
+; is built once per frame from the orbit angle.
+
 (def light (v-norm (vec (fx-frac 5 10) one (fx-frac 7 10))))
 (def far-away (mul one 100000))
+
+(def eye-at (lambda (angle)
+  (vec (fx-mul (fx 5) (cos angle)) (fx-frac 22 10) (fx-mul (fx 5) (sin angle)))))
+
+; A camera is the list (eye forward right up).
+(def camera (lambda (eye)
+  (let forward (v-norm (v-sub (vec 0 0 0) eye))
+    (let right (v-norm (v-cross forward (vec 0 one 0)))
+      (cons eye (cons forward (cons right (cons (v-cross right forward) ()))))))))
+
+(def cam-eye (lambda (c) (head c)))
+(def cam-forward (lambda (c) (head (tail c))))
+(def cam-right (lambda (c) (head (tail (tail c)))))
+(def cam-up (lambda (c) (head (tail (tail (tail c))))))
 
 ; Direction of the ray through pixel (i j) of a w by h image. The view
 ; spans 0.4 units left and right at unit distance; rows use the same
 ; scale so pixels stay square.
-(def ray-dir (lambda (i j w h)
+(def ray-dir (lambda (i j w h cam)
   (let u (div (mul (fx (sub (add (mul 2 i) 1) w)) 4) (mul w 10))
     (let v (div (mul (fx (sub h (add (mul 2 j) 1))) 4) (mul w 10))
-      (v-add forward (v-add (v-scale right u) (v-scale up v)))))))
+      (v-add (cam-forward cam)
+             (v-add (v-scale (cam-right cam) u) (v-scale (cam-up cam) v)))))))
 
 ; Slab test on one axis: the interval of t where the ray is between -1
 ; and 1 on that axis, as a (near far) pair. A ray parallel to the axis
@@ -110,22 +151,26 @@
 
 (def background (lambda (j h) (add 16 (div (mul 48 j) h))))
 
-(def pixel (lambda (i j w h)
-  (let d (ray-dir i j w h)
-    (let sx (slab (vx eye) (vx d))
-      (let sy (slab (vy eye) (vy d))
-        (let sz (slab (vz eye) (vz d))
-          (let tmin (max (near sx) (max (near sy) (near sz)))
-            (let tmax (min (far sx) (min (far sy) (far sz)))
-              (if (lt tmax tmin)
-                (background j h)
-                (if (lt tmax 0)
+(def pixel (lambda (i j w h cam)
+  (let d (ray-dir i j w h cam)
+    (let eye (cam-eye cam)
+      (let sx (slab (vx eye) (vx d))
+        (let sy (slab (vy eye) (vy d))
+          (let sz (slab (vz eye) (vz d))
+            (let tmin (max (near sx) (max (near sy) (near sz)))
+              (let tmax (min (far sx) (min (far sy) (far sz)))
+                (if (lt tmax tmin)
                   (background j h)
-                  (shade (face-normal sx sy sz tmin d))))))))))))
+                  (if (lt tmax 0)
+                    (background j h)
+                    (shade (face-normal sx sy sz tmin d)))))))))))))
 
-(def render-row (lambda (j w h)
-  (map (lambda (i) (pixel i j w h)) (range 0 w))))
+(def render-row (lambda (j w h cam)
+  (map (lambda (i) (pixel i j w h cam)) (range 0 w))))
 
-; (render w h small?) gives the rows of the image, top row first.
-(def render (lambda (w h small?)
-  (pmap (lambda (j) (render-row j w h)) (range 0 h) small?)))
+; (render w h angle small?) gives the rows of the image, top row first,
+; seen from the camera at that orbit angle. The camera is computed once
+; here and captured by the row closures, so it travels with the pieces.
+(def render (lambda (w h angle small?)
+  (let cam (camera (eye-at angle))
+    (pmap (lambda (j) (render-row j w h cam)) (range 0 h) small?))))
