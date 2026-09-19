@@ -72,6 +72,29 @@ defmodule Thunk.EvalTest do
       assert ev("(let x 1 (let g (k 2) (let x 3 (g))))", %{}, ctx) == 2
     end
 
+    test "calls with many arguments" do
+      assert ev("((lambda () 7))") == 7
+      assert ev("((lambda (a b c d) (sub (add a b) (add c d))) 10 20 3 4)") == 23
+      assert ev("((lambda (a b c d e) (cons a (cons e ()))) 1 2 3 4 5)") == [1, 5]
+    end
+
+    test "arguments are evaluated left to right, the first error wins" do
+      assert_raise Error, ~r/bad arguments to head/, fn -> ev("(add (head ()) (div 1 0))") end
+      assert_raise Error, ~r/bad arguments to div/, fn -> ev("(add (div 1 0) (head ()))") end
+
+      assert_raise Error, ~r/bad arguments to tail/, fn ->
+        ev("((lambda (a b c d) a) 1 2 (tail ()) (head ()))")
+      end
+    end
+
+    test "the callable is evaluated before the arguments" do
+      assert_raise Error, ~r/unbound symbol nope/, fn -> ev("(nope (head ()))") end
+    end
+
+    test "all arguments are evaluated before an arity error" do
+      assert_raise Error, ~r/bad arguments to head/, fn -> ev("((lambda (x) x) 1 (head ()))") end
+    end
+
     test "arity mismatch is an error" do
       assert_raise Error, ~r/expected 1 argument/, fn -> ev("((lambda (x) x) 1 2)") end
       assert_raise Error, ~r/expected 2 argument/, fn -> ev("((lambda (x y) x))") end

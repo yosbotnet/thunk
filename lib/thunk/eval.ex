@@ -74,7 +74,7 @@ defmodule Thunk.Eval do
 
   def eval([f | args], env, ctx) do
     callable = eval(f, env, ctx)
-    values = Enum.map(args, &eval(&1, env, ctx))
+    values = eval_args(args, env, ctx)
     apply(callable, values, ctx)
   end
 
@@ -94,6 +94,29 @@ defmodule Thunk.Eval do
 
   def apply({:primitive, name}, args, _ctx), do: Primitives.call(name, args)
   def apply(other, _args, _ctx), do: raise(Error, "not a function: #{inspect(other)}")
+
+  # Evaluates the arguments of a call left to right. Most calls have one
+  # to three arguments, so those are spelled out: this is the hottest
+  # path of the interpreter and avoids going through Enum.map with a
+  # callback on every call.
+  defp eval_args([], _env, _ctx), do: []
+  defp eval_args([a], env, ctx), do: [eval(a, env, ctx)]
+
+  defp eval_args([a, b], env, ctx) do
+    x = eval(a, env, ctx)
+    [x, eval(b, env, ctx)]
+  end
+
+  defp eval_args([a, b, c], env, ctx) do
+    x = eval(a, env, ctx)
+    y = eval(b, env, ctx)
+    [x, y, eval(c, env, ctx)]
+  end
+
+  defp eval_args([a | rest], env, ctx) do
+    x = eval(a, env, ctx)
+    [x | eval_args(rest, env, ctx)]
+  end
 
   defp lookup_def(name, %Context{defs: defs}) do
     case defs do
