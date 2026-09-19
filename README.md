@@ -69,7 +69,10 @@ and `--scheduler sequential|local|distributed`. A third demo, `cube`, is a
 raytracer written in the language with fixed-point arithmetic
 (`priv/demos/cube.thunk`): `mix thunk.demo cube --width 640 --height 480`
 renders the image row by row across the cluster, writes `cube.bmp` and
-prints a preview. Multi-node tests start peer
+prints a preview. `mandelbrot` (`priv/demos/mandelbrot.thunk`) renders the
+Mandelbrot set the same way, with `--iterations` for the limit per pixel;
+its rows cost very different amounts of work, which is where small pieces
+and stealing matter most. Multi-node tests start peer
 nodes on the same machine and need a working `epmd`; they are skipped with
 a message if distribution cannot be started.
 
