@@ -25,7 +25,9 @@ defmodule Thunk.ClusterTest do
   test "mergesort across nodes equals the sequential result and pieces were stolen", %{
     peers: peers
   } do
-    xs = Enum.shuffle(1..2_000)
+    # big enough that the job outlasts the peers' first steal attempts
+    # even when the machine is busy with the rest of the suite
+    xs = Enum.shuffle(1..10_000)
 
     ctx =
       Cluster.load("(def main (lambda (xs) (mergesort xs (lambda (v) (lt (length v) 50)))))")
