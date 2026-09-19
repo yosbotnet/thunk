@@ -85,10 +85,9 @@ defmodule Thunk.Eval do
   """
   @spec apply(value, [value], Context.t()) :: value
   def apply({:closure, params, body, env}, args, ctx) do
-    if length(params) == length(args) do
-      eval(body, bind(env, params, args), ctx)
-    else
-      raise Error, "expected #{length(params)} argument(s), got #{length(args)}"
+    case bind(env, params, args) do
+      :arity -> raise Error, "expected #{length(params)} argument(s), got #{length(args)}"
+      env -> eval(body, env, ctx)
     end
   end
 
@@ -131,7 +130,11 @@ defmodule Thunk.Eval do
     end
   end
 
-  defp bind(env, params, args) do
-    Enum.zip(params, args) |> Enum.into(env)
-  end
+  # Adds each parameter to the captured environment in one walk over
+  # both lists. Returns :arity when one list runs out before the other;
+  # the body is then never evaluated. A repeated parameter name keeps the
+  # last argument, as later bindings overwrite earlier ones.
+  defp bind(env, [p | params], [a | args]), do: bind(Map.put(env, p, a), params, args)
+  defp bind(env, [], []), do: env
+  defp bind(_env, _params, _args), do: :arity
 end

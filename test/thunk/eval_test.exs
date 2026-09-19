@@ -95,6 +95,18 @@ defmodule Thunk.EvalTest do
       assert_raise Error, ~r/bad arguments to head/, fn -> ev("((lambda (x) x) 1 (head ()))") end
     end
 
+    test "a repeated parameter name takes the last argument" do
+      assert ev("((lambda (x x) x) 1 2)") == 2
+    end
+
+    test "parameters shadow captured variables without changing them" do
+      assert ev("(let x 1 (let f (lambda (x) x) (cons (f 2) (cons x ()))))") == [2, 1]
+    end
+
+    test "closures that differ only in an unused capture are not equal" do
+      assert ev("(eq (let unused 1 (lambda (x) x)) (let unused 2 (lambda (x) x)))") == false
+    end
+
     test "arity mismatch is an error" do
       assert_raise Error, ~r/expected 1 argument/, fn -> ev("((lambda (x) x) 1 2)") end
       assert_raise Error, ~r/expected 2 argument/, fn -> ev("((lambda (x y) x))") end
