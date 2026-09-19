@@ -1,5 +1,5 @@
 defmodule Mix.Tasks.Thunk.Demo do
-  @shortdoc "Runs the mergesort, word count or cube demo and reports timings"
+  @shortdoc "Runs the mergesort, word count, cube or Mandelbrot demo and reports timings"
 
   @moduledoc """
   Runs a demo job and prints, for each repetition, the elapsed time, a
@@ -8,11 +8,15 @@ defmodule Mix.Tasks.Thunk.Demo do
       mix thunk.demo mergesort --size 20000 --threshold 500 --repeat 3
       mix thunk.demo wordcount --size 20000 --threshold 500
       mix thunk.demo cube --width 320 --height 240 --threshold 8
+      mix thunk.demo mandelbrot --width 640 --height 480 --iterations 200
 
   Mergesort and word count are checked against native Elixir. The cube
   is a raytraced image (priv/demos/cube.thunk): its rows are checked for
   shape and range, the picture is written to a BMP file (--out, default
-  cube.bmp) and previewed in the terminal.
+  cube.bmp) and previewed in the terminal. The Mandelbrot demo
+  (priv/demos/mandelbrot.thunk) is handled the same way; its rows cost
+  very different amounts of work, depending on how much of the set they
+  cross.
 
   Options: --size (elements or words, default 10000), --width and
   --height (cube, default 160 by 120), --threshold (pieces smaller than
@@ -23,7 +27,8 @@ defmodule Mix.Tasks.Thunk.Demo do
   that all work goes to the peers), --wait (seconds to wait for at least
   one peer, default 10), --out (cube image path), --frames (cube: render
   this many frames with the camera going once around the cube, each
-  frame a job of its own, and write an animated GIF instead of a BMP).
+  frame a job of its own, and write an animated GIF instead of a BMP),
+  --iterations (Mandelbrot: iteration limit per pixel, default 200).
   """
 
   use Mix.Task
@@ -41,7 +46,8 @@ defmodule Mix.Tasks.Thunk.Demo do
     limit: :integer,
     wait: :integer,
     out: :string,
-    frames: :integer
+    frames: :integer,
+    iterations: :integer
   ]
 
   # Orbit angle of the first frame, atan(4/3) in fixed point: the camera
@@ -58,12 +64,13 @@ defmodule Mix.Tasks.Thunk.Demo do
         ["mergesort"] -> :mergesort
         ["wordcount"] -> :wordcount
         ["cube"] -> :cube
-        _ -> Mix.raise("usage: mix thunk.demo mergesort|wordcount|cube [options]")
+        ["mandelbrot"] -> :mandelbrot
+        _ -> Mix.raise("usage: mix thunk.demo mergesort|wordcount|cube|mandelbrot [options]")
       end
 
     Mix.Task.run("app.start")
 
-    threshold = opts[:threshold] || if(demo == :cube, do: 8, else: 500)
+    threshold = opts[:threshold] || if(demo in [:cube, :mandelbrot], do: 8, else: 500)
     repeat = opts[:repeat] || 1
     seed = opts[:seed] || 1
     scheduler = String.to_atom(opts[:scheduler] || "distributed")
@@ -102,6 +109,8 @@ defmodule Mix.Tasks.Thunk.Demo do
         result
       end
 
+    if demo == :mandelbrot, do: save_image(List.last(results), opts[:out] || "mandelbrot.bmp")
+
     if demo == :cube do
       last = Enum.take(results, -frames)
 
@@ -138,6 +147,13 @@ defmodule Mix.Tasks.Thunk.Demo do
       "(def main (lambda (dims) (render (head dims) (head (tail dims)) (head (tail (tail dims))) (lambda (rows) (lt (length rows) #{t})))))"
   end
 
+  defp program(:mandelbrot, t) do
+    source = File.read!(Path.join(to_string(:code.priv_dir(:thunk)), "demos/mandelbrot.thunk"))
+
+    source <>
+      "(def main (lambda (d) (render (head d) (head (tail d)) (head (tail (tail d))) (lambda (rows) (lt (length rows) #{t})))))"
+  end
+
   defp input(:mergesort, opts, seed, _frame, _frames) do
     :rand.seed(:exsss, {seed, seed, seed})
     for _ <- 1..(opts[:size] || 10_000), do: :rand.uniform(1_000_000)
@@ -153,7 +169,12 @@ defmodule Mix.Tasks.Thunk.Demo do
     [opts[:width] || 160, opts[:height] || 120, @first_angle + div(frame * @two_pi, frames)]
   end
 
+  defp input(:mandelbrot, opts, _seed, _frame, _frames) do
+    [opts[:width] || 160, opts[:height] || 120, opts[:iterations] || 200]
+  end
+
   defp describe(:cube, [w, h, angle]), do: "#{w}x#{h} angle=#{angle}"
+  defp describe(:mandelbrot, [w, h, max]), do: "#{w}x#{h} iterations=#{max}"
   defp describe(:mergesort, xs), do: "size=#{length(xs)}"
   defp describe(:wordcount, text), do: "size=#{length(String.split(text))}"
 
@@ -163,7 +184,7 @@ defmodule Mix.Tasks.Thunk.Demo do
     Map.new(result, fn [w, n] -> {w, n} end) == Enum.frequencies(String.split(input))
   end
 
-  defp check(:cube, [w, h, _angle], rows) do
+  defp check(demo, [w, h, _], rows) when demo in [:cube, :mandelbrot] do
     length(rows) == h and Enum.all?(rows, &(length(&1) == w)) and
       Enum.all?(List.flatten(rows), &(&1 in 0..255))
   end

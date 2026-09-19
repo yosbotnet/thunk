@@ -1,0 +1,59 @@
+; The Mandelbrot set in fixed-point arithmetic.
+;
+; A point c belongs to the set if the sequence z = z*z + c, starting from
+; zero, never leaves the circle of radius 2. For each pixel we count how
+; many steps the sequence takes to leave it, up to a limit. Points inside
+; the set always reach the limit, points far outside leave after one or
+; two steps: the cost of a pixel depends on where it is, which makes the
+; rows of the image very uneven pieces of work.
+;
+; Numbers are scaled by `one` (65536, sixteen fractional bits).
+
+(def one 65536)
+
+(def four (mul 4 one))
+
+(def fx-sq (lambda (a) (div (mul a a) one)))
+
+; Number of steps before z leaves the circle of radius 2, or max.
+(def escape-loop (lambda (cr ci zr zi n max)
+  (if (eq n max)
+    max
+    (let zr2 (fx-sq zr)
+      (let zi2 (fx-sq zi)
+        (if (lt four (add zr2 zi2))
+          n
+          (escape-loop cr ci
+            (add (sub zr2 zi2) cr)
+            (add (div (mul 2 (mul zr zi)) one) ci)
+            (add n 1)
+            max)))))))
+
+(def escape-time (lambda (cr ci max)
+  (escape-loop cr ci 0 0 0 max)))
+
+; Grey level of a pixel: black inside the set, white for points that
+; escape at once, darker the longer a point takes to escape. The square
+; root spreads the few steps most outside points take over the grey
+; range, so the filaments around the set stay visible.
+(def shade (lambda (n max)
+  (if (eq n max)
+    0
+    (sub 255 (div (mul 215 (isqrt (mul n max))) max)))))
+
+; The view spans real parts from -2.2 to 0.8 and is centred on the real
+; axis; pixels are square.
+(def x-min (sub 0 (div (mul 22 one) 10)))
+(def span (mul 3 one))
+
+(def pixel (lambda (i j w h max)
+  (let cr (add x-min (div (mul (add (mul 2 i) 1) span) (mul 2 w)))
+    (let ci (div (mul (sub h (add (mul 2 j) 1)) span) (mul 2 w))
+      (shade (escape-time cr ci max) max)))))
+
+(def render-row (lambda (j w h max)
+  (map (lambda (i) (pixel i j w h max)) (range 0 w))))
+
+; (render w h max small?) gives the rows of the image, top row first.
+(def render (lambda (w h max small?)
+  (pmap (lambda (j) (render-row j w h max)) (range 0 h) small?)))
