@@ -80,6 +80,48 @@ defmodule Thunk.PreludeTest do
     end
   end
 
+  describe "what the parallel library puts in a piece" do
+    # Hands every piece to the test process before solving it
+    # sequentially, so the test can look at what would be sent to a thief.
+    defmodule Recorder do
+      @behaviour Thunk.Scheduler
+      @impl true
+      def solve(work, ctx) do
+        send(self(), {:work, work})
+        Thunk.Scheduler.Sequential.solve(work, ctx)
+      end
+    end
+
+    setup %{ctx: ctx} do
+      program = """
+      (def square (lambda (x) (mul x x)))
+      (def small? (lambda (v) (lt (length v) 1000)))
+      (def main-map (lambda (xs) (pmap square xs small?)))
+      (def main-reduce (lambda (xs) (reduce add xs small?)))
+      """
+
+      %{rec: Thunk.load(program, Thunk.with_scheduler(ctx, Recorder))}
+    end
+
+    defp piece_size(work) do
+      [work.pred, work.split, work.base, work.merge] |> :erlang.term_to_binary() |> byte_size()
+    end
+
+    test "pmap does not capture the input list in its base case", %{rec: rec} do
+      xs = Enum.to_list(1..20_000)
+      assert ev(rec, "(main-map xs)", %{xs: xs}) == Enum.map(xs, &(&1 * &1))
+      assert_received {:work, work}
+      assert piece_size(work) < 2_000
+    end
+
+    test "reduce does not capture the input list in its base case", %{rec: rec} do
+      xs = Enum.to_list(1..20_000)
+      assert ev(rec, "(main-reduce xs)", %{xs: xs}) == Enum.sum(xs)
+      assert_received {:work, work}
+      assert piece_size(work) < 2_000
+    end
+  end
+
   describe "sorting" do
     test "insert and insertion-sort", %{ctx: ctx} do
       assert ev(ctx, "(insert 2 xs)", %{xs: [1, 3]}) == [1, 2, 3]

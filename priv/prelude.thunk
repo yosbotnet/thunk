@@ -52,12 +52,23 @@
 ; reduce are ordinary definitions on top of it. small? decides when a
 ; list is solved directly and must be true for any list of length one.
 
+;
+; A closure keeps its whole environment, and the functions given to dc
+; travel with every piece. So the base cases are built by pmap-base and
+; reduce-base, where only f or op is in scope: written inline inside
+; pmap they would also capture xs and ship the entire input with every
+; stolen piece.
+
+(def pmap-base (lambda (f) (lambda (v) (map f v))))
+
 (def pmap (lambda (f xs small?)
-  (dc xs small? halves (lambda (v) (map f v)) append)))
+  (dc xs small? halves (pmap-base f) append)))
+
+(def reduce-base (lambda (op) (lambda (v) (fold op (head v) (tail v)))))
 
 ; reduce requires op to be associative. It is undefined on the empty list.
 (def reduce (lambda (op xs small?)
-  (dc xs small? halves (lambda (v) (fold op (head v) (tail v))) op)))
+  (dc xs small? halves (reduce-base op) op)))
 
 ; Sorting.
 
