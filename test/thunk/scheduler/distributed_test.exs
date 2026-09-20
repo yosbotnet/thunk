@@ -41,7 +41,7 @@ defmodule Thunk.Scheduler.DistributedTest do
     ctx = ctx(4)
     %{evaluated: before} = Worker.stats()
     assert Thunk.eval("(dc 100 #{@small} #{@split} (lambda (n) n) add)", ctx) == 100
-    # evaluators finish asynchronously from the worker's point of view
+    # Give the worker time to record the completed evaluators.
     Process.sleep(50)
     assert Worker.stats().evaluated > before
   end
@@ -72,9 +72,7 @@ defmodule Thunk.Scheduler.DistributedTest do
     owner = self()
     %{recovered: before} = Worker.stats()
 
-    # A fake thief: keeps asking until it gets a piece, then dies without
-    # ever claiming it. The job is big enough that its right half sits in
-    # the deque while the left half is being solved.
+    # Take a piece and exit without claiming it.
     thief = spawn(fn -> steal_until_piece(owner) end)
 
     program = "(dc 200000 #{@small} #{@split} (lambda (n) n) add)"
@@ -91,10 +89,7 @@ defmodule Thunk.Scheduler.DistributedTest do
     owner = self()
     %{recovered: before} = Worker.stats()
 
-    # This thief plays a worker whose evaluator died with a language
-    # error: it claims the piece, then reports the failure the way a
-    # worker does. The owner must re-raise it rather than solve the piece
-    # again.
+    # Claim a piece, then report a language error.
     spawn(fn ->
       piece = steal_until_piece(owner)
       send(piece.reply_to, {:claimed, piece.ref, self()})
@@ -118,7 +113,6 @@ defmodule Thunk.Scheduler.DistributedTest do
     defs = Thunk.load("(def double (lambda (n) (mul n 2)))", Worker.prelude()).defs
     Worker.register_job(id, defs)
 
-    # build the piece by hand: base case that calls the job's definition
     truthy = Thunk.eval("(lambda (v) true)")
     work = %Thunk.Work{value: 21, pred: truthy, split: truthy, base: defs.double, merge: truthy}
     piece = %Piece{work: work, ref: make_ref(), reply_to: self(), job: {id, node()}}

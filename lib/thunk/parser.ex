@@ -52,10 +52,6 @@ defmodule Thunk.Parser do
     end
   end
 
-  # Recursive descent over the token stream. The scanner state is the
-  # remaining input together with the current line and column, and tokens
-  # are pulled one at a time so that the first error in the text wins.
-
   defp top(state, acc) do
     case next(state) do
       {:ok, :eof, _pos, _state} ->
@@ -88,9 +84,6 @@ defmodule Thunk.Parser do
         error
     end
   end
-
-  # Scanner: returns the next token with its starting position, skipping
-  # whitespace and comments. Tokens are :open, :close, :eof or {:value, v}.
 
   defp next({"", line, col}), do: {:ok, :eof, {line, col}, {"", line, col}}
   defp next({"\n" <> rest, line, _col}), do: next({rest, line + 1, 1})

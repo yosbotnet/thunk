@@ -45,11 +45,7 @@ defmodule Thunk.TestCluster do
     {args, opts} = Keyword.pop(opts, :args, [])
     paths = Enum.map(:code.get_path(), &to_charlist/1)
 
-    # The control channel is a TCP socket (connection: 0 picks a free
-    # port) rather than distribution, which on Windows drops the peer
-    # link right after start. The app itself still talks over distribution.
-    # Not linked: peers are stopped explicitly by the tests, possibly
-    # from a different process than the one that started them.
+    # A TCP control channel works on Windows; distribution handles app traffic.
     {:ok, pid, _node} =
       :peer.start(%{
         name: name,

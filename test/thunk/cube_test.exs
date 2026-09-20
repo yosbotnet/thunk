@@ -43,8 +43,6 @@ defmodule Thunk.CubeTest do
   end
 
   test "sine and cosine in fixed point", %{ctx: ctx} do
-    # within about a hundredth over the whole circle, including angles
-    # that need wrapping
     for degrees <- Enum.take_every(-360..720, 15) do
       radians = degrees * :math.pi() / 180
       angle = round(radians * 4096)
@@ -86,21 +84,19 @@ defmodule Thunk.CubeTest do
     a = render(ctx, Sequential, 32, 24, @angle)
     b = render(ctx, Sequential, 32, 24, @angle + 6434)
     assert a != b
-    # from this side the centre ray meets a face in shadow, which is the
-    # ambient level, still distinct from the background of that row
+    # The centre is in shadow at this angle.
     assert b |> Enum.at(12) |> Enum.at(16) != 16 + div(48 * 12, 24)
-    # the top face is lit from every angle
     assert Enum.max(List.flatten(b)) > 150
   end
 
   test "bmp encoding" do
     rows = [[0, 128, 255], [255, 128, 0]]
     bmp = Image.bmp(rows)
-    # 3 pixels of 3 bytes padded to 12 bytes per row, two rows, 54 byte header
+    # Each BMP row is padded to 12 bytes.
     assert byte_size(bmp) == 54 + 2 * 12
     assert <<"BM", size::little-32, _::binary>> = bmp
     assert size == byte_size(bmp)
-    # bottom row first, blue green red per pixel
+    # BMP stores the bottom row first, in BGR order.
     assert binary_part(bmp, 54, 9) == <<255, 255, 255, 128, 128, 128, 0, 0, 0>>
   end
 
@@ -112,7 +108,7 @@ defmodule Thunk.CubeTest do
     assert <<"GIF89a", 300::little-16, 4::little-16, 0xF7, 0, 0, _::binary>> = gif
     assert :binary.last(gif) == 0x3B
 
-    # skip the screen descriptor, the palette and the loop extension
+    # Skip the GIF header, palette and loop extension.
     rest = binary_part(gif, 13 + 768 + 19, byte_size(gif) - 13 - 768 - 19)
     {pixels1, rest} = decode_frame(rest)
     {pixels2, <<0x3B>>} = decode_frame(rest)
@@ -122,16 +118,13 @@ defmodule Thunk.CubeTest do
 
   test "ascii preview" do
     rows = for j <- 0..7, do: for(_ <- 0..15, do: j * 32)
-    # 16 columns into 8 means every second pixel, and every fourth row
     lines = Image.ascii(rows, 8)
     assert length(lines) == 2
     assert Enum.all?(lines, &(String.length(&1) == 8))
     assert hd(lines) != List.last(lines)
   end
 
-  # A decoder for the encoder's own scheme: reads the control extension
-  # and image descriptor, gathers the sub-blocks, unpacks nine-bit codes
-  # and drops the clear and end codes.
+  # Enough GIF decoding to check the frames written above.
   defp decode_frame(
          <<0x21, 0xF9, 4, _::binary-size(4), 0, 0x2C, _::binary-size(9), 8, rest::binary>>
        ) do

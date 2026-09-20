@@ -94,10 +94,7 @@ defmodule Thunk.Eval do
   def apply({:primitive, name}, args, _ctx), do: Primitives.call(name, args)
   def apply(other, _args, _ctx), do: raise(Error, "not a function: #{inspect(other)}")
 
-  # Evaluates the arguments of a call left to right. Most calls have one
-  # to three arguments, so those are spelled out: this is the hottest
-  # path of the interpreter and avoids going through Enum.map with a
-  # callback on every call.
+  # Most calls have at most three arguments. Avoid Enum.map on this path.
   defp eval_args([], _env, _ctx), do: []
   defp eval_args([a], env, ctx), do: [eval(a, env, ctx)]
 
@@ -130,10 +127,7 @@ defmodule Thunk.Eval do
     end
   end
 
-  # Adds each parameter to the captured environment in one walk over
-  # both lists. Returns :arity when one list runs out before the other;
-  # the body is then never evaluated. A repeated parameter name keeps the
-  # last argument, as later bindings overwrite earlier ones.
+  # Bind parameters and arguments together; a length mismatch returns :arity.
   defp bind(env, [p | params], [a | args]), do: bind(Map.put(env, p, a), params, args)
   defp bind(env, [], []), do: env
   defp bind(_env, _params, _args), do: :arity

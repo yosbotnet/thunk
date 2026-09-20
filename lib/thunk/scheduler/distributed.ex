@@ -48,9 +48,7 @@ defmodule Thunk.Scheduler.Distributed do
                     value
 
                   {:lost, reason} ->
-                    # The thief died before answering. The piece is pure,
-                    # so solving it again here gives the same result the
-                    # thief would have produced.
+                    # A lost piece can be recomputed because the work is pure.
                     Logger.warning(
                       "piece #{inspect(ref)} lost (#{inspect(reason)}), solving it again"
                     )
@@ -66,9 +64,7 @@ defmodule Thunk.Scheduler.Distributed do
           {left_result, right_result}
         rescue
           error ->
-            # A failing job must not leave its pieces behind for thieves
-            # to compute for nothing. Each frame withdraws its own piece
-            # as the error unwinds; a piece already taken is simply gone.
+            # Don't leave this piece in the deque after an error.
             Worker.take_back(ref)
             reraise error, __STACKTRACE__
         end
@@ -102,9 +98,6 @@ defmodule Thunk.Scheduler.Distributed do
     end
   end
 
-  # The owner side of a stolen piece. `thief` is the worker that took it.
-  # Gives {:ok, value}, or {:lost, reason} when the piece can be solved
-  # again; a language error is raised instead.
   defp await(ref, thief) do
     mon = Process.monitor(thief)
 
@@ -127,9 +120,7 @@ defmodule Thunk.Scheduler.Distributed do
     end
   end
 
-  # The thief's worker reports the exit reason of a dead evaluator with a
-  # failed message, which arrives before any monitor of ours could fire;
-  # the monitor only matters when the whole node is gone.
+  # The worker reports evaluator failures; the monitor catches node loss.
   defp await_result(ref, mon) do
     receive do
       {:result, ^ref, value} ->
@@ -145,8 +136,7 @@ defmodule Thunk.Scheduler.Distributed do
     end
   end
 
-  # A result may overtake the claimed message, since they come from
-  # different processes. Drop the stale one so it does not pile up.
+  # Result and claim come from different processes and can arrive out of order.
   defp flush_claimed(ref) do
     receive do
       {:claimed, ^ref, _} -> :ok

@@ -16,8 +16,7 @@ defmodule Thunk.ClusterTest do
   end
 
   setup do
-    # The test node never evaluates pieces itself, so every piece below
-    # the root must be stolen by a peer.
+    # Force the peers to do the work.
     Worker.set_limit(0)
     :ok
   end
@@ -25,8 +24,7 @@ defmodule Thunk.ClusterTest do
   test "mergesort across nodes equals the sequential result and pieces were stolen", %{
     peers: peers
   } do
-    # big enough that the job outlasts the peers' first steal attempts
-    # even when the machine is busy with the rest of the suite
+    # Keep the job alive long enough for peers to steal.
     xs = Enum.shuffle(1..10_000)
 
     ctx =
@@ -68,9 +66,7 @@ defmodule Thunk.ClusterTest do
     :ok = Cluster.wait_for_peers(3, 10_000)
     before = Enum.sum(for n <- [node() | Node.list()], do: Worker.stats(n).recovered)
 
-    # base cases spin for a while so that the job lasts several seconds
-    # and the victim, with the most capacity, is holding pieces when it
-    # is killed
+    # Slow the base cases so the victim still has work when it dies.
     program = """
     (def spin (lambda (n) (if (eq n 0) 0 (spin (sub n 1)))))
     (def main (lambda (xs)
@@ -88,9 +84,7 @@ defmodule Thunk.ClusterTest do
 
     assert Cluster.run(ctx, Enum.to_list(1..256)) == Enum.to_list(1..256)
 
-    # Recoveries are counted on the node whose evaluator re-solved the
-    # piece; the victim held pieces from the test node and from the
-    # other peers, so at least one of them must have recovered something.
+    # Recovery is counted on the node that solves the piece again.
     recovered =
       Enum.sum(for n <- [node() | Node.list()], do: Worker.stats(n).recovered) - before
 

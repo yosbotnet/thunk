@@ -3,7 +3,6 @@ services:
     build: .
     image: thunk
     hostname: node1
-    # the dashboard, when started in this container (see README)
     ports:
       - "4000:4000"
     environment:
@@ -26,9 +25,7 @@ services:
       THUNK_NODE: thunk
       THUNK_COOKIE: thunk-demo
       THUNK_PEERS: thunk@node1,thunk@node2
-  # Extra nodes that join the running cluster knowing only node1. No
-  # hostname is set, so each replica is thunk@<container id> and it can be
-  # scaled: docker compose --profile join up -d --scale joiner=2
+  # Replicas use their container id as hostname.
   joiner:
     image: thunk
     profiles: [join]

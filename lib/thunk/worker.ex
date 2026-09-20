@@ -35,8 +35,6 @@ defmodule Thunk.Worker do
             max_backoff: 100,
             stats: %{steals: 0, stolen_from: 0, evaluated: 0, recovered: 0}
 
-  # Client API
-
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: @name)
 
   @doc "Offers a piece to thieves and to this node's own spare capacity."
@@ -61,8 +59,6 @@ defmodule Thunk.Worker do
   def prelude, do: GenServer.call(@name, :prelude)
   def set_limit(n) when is_integer(n) and n >= 0, do: GenServer.call(@name, {:set_limit, n})
   def stats(node \\ node(), timeout \\ 5_000), do: GenServer.call({@name, node}, :stats, timeout)
-
-  # Server
 
   @impl true
   def init(opts) do
@@ -165,7 +161,6 @@ defmodule Thunk.Worker do
     end
   end
 
-  # Replies to steal requests arrive as plain messages.
   @impl true
   def handle_info({:piece, piece}, state) do
     Logger.debug("stole piece #{inspect(piece.ref)} from #{inspect(node(piece.reply_to))}")
@@ -203,8 +198,7 @@ defmodule Thunk.Worker do
         {:noreply, state}
 
       {{_mon, piece}, running} ->
-        # Tell the owner why its piece died, so it can tell a broken
-        # program (re-raise) from a crashed process (solve it again).
+        # The owner needs the reason to decide whether to retry.
         if reason != :normal, do: send(piece.reply_to, {:failed, piece.ref, reason})
 
         state = %{
@@ -228,9 +222,7 @@ defmodule Thunk.Worker do
     {:noreply, %{state | steal: steal}}
   end
 
-  # Internals
-
-  # Uses spare capacity on own pieces first, then steals.
+  # Try local work before asking another node.
   defp balance(state) do
     cond do
       map_size(state.running) >= state.limit ->

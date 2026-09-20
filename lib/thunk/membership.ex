@@ -30,15 +30,11 @@ defmodule Thunk.Membership do
             seeding: nil,
             monitoring: false
 
-  # Client API
-
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: @name)
 
   @doc "The thunk nodes known to `node`, itself included, sorted."
   @spec members(node) :: [node]
   def members(node \\ node()), do: GenServer.call({@name, node}, :members)
-
-  # Server
 
   @impl true
   def init(opts) do
@@ -58,8 +54,6 @@ defmodule Thunk.Membership do
     {:reply, Enum.sort([node() | MapSet.to_list(state.members)]), state}
   end
 
-  # Another node asks for our list: answer with it. The asking node is
-  # connected and runs thunk, so it is a member too.
   @impl true
   def handle_info({:pull, from}, state) do
     send(from, {:push, node(), MapSet.to_list(state.members)})
@@ -88,8 +82,7 @@ defmodule Thunk.Membership do
     {:noreply, schedule_gossip(state)}
   end
 
-  # Try the seeds while no member is known. One attempt at a time, since
-  # a seed that does not answer keeps Node.connect busy for a while.
+  # Only one seed attempt at a time; Node.connect can take a while.
   def handle_info(:seed, %{seeding: nil} = state) do
     known = MapSet.new(Node.list())
 
@@ -127,8 +120,6 @@ defmodule Thunk.Membership do
 
   def handle_info(_other, state), do: {:noreply, state}
 
-  # Internals
-
   defp pull(n), do: send({@name, n}, {:pull, self()})
 
   defp add_member(state, n) do
@@ -145,8 +136,7 @@ defmodule Thunk.Membership do
     end
   end
 
-  # Distribution may be started after the application (the test node
-  # does this), so monitoring is switched on as soon as it is possible.
+  # Tests may start distribution after the application.
   defp monitor(%{monitoring: false} = state) do
     if Node.alive?() do
       :net_kernel.monitor_nodes(true)
