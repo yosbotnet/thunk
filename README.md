@@ -9,8 +9,9 @@ Milestone 2: the language and interpreter from milestone 1, plus peer
 nodes with decentralized work stealing and a Docker Compose demo cluster.
 Every node is a peer; there is no coordinator. A piece of work whose
 thief crashes or whose node disappears is solved again by its owner, so a
-job survives losing nodes mid-run. Termination detection, memoization,
-dynamic membership and a dashboard remain optional extensions.
+job survives losing nodes mid-run. Nodes can join a running cluster
+knowing a single seed. Termination detection, memoization and a
+dashboard remain optional extensions.
 
 ## Approved scope
 
@@ -52,17 +53,33 @@ itself up to a configurable limit, and when idle asks a random connected
 node for its oldest piece. A job is submitted from any node; the program's
 definitions travel with it, so only the prelude has to be on every node.
 
-Configuration is by environment: `THUNK_PEERS` (comma-separated node names
-to connect to at boot), `THUNK_LIMIT` (evaluators this node runs from its
-own deque, default the number of schedulers).
+Configuration is by environment: `THUNK_PEERS` (comma-separated seed
+nodes), `THUNK_LIMIT` (evaluators this node runs from its own deque,
+default the number of schedulers).
+
+Nodes can join and leave a running cluster. A node needs only one
+reachable seed: it retries its seeds every second until it knows a
+member, then finds the others by gossip. When a node connects to another,
+and every two or three seconds, it asks a random connected node for its
+member list and connects to the nodes it did not know. This does not
+rely on the full mesh of the BEAM, so it also works with
+`-connect_all false`. A node that disappears is dropped from the list,
+and a restarted node comes back through its seeds. `Thunk.Cluster.members/1`
+returns the nodes a given node knows. New nodes steal work at once, also
+from a job that is already running.
 
 Demo cluster with Docker Compose:
 
 ```text
 docker compose up -d --build
 docker compose exec node1 sh -c 'elixir --sname client --cookie thunk-demo -S mix thunk.demo mergesort --size 20000 --threshold 500'
-docker compose down
+docker compose --profile join up -d --scale joiner=2
+docker compose exec node1 elixir --sname probe --cookie thunk-demo -e "IO.inspect(:erpc.call(:thunk@node1, Thunk.Cluster, :members, []))"
+docker compose --profile join down
 ```
+
+The `joiner` service only knows `thunk@node1`; its replicas are named
+after their container id.
 
 `mix thunk.demo` also takes `wordcount`, `--repeat`, `--seed`, `--limit`
 and `--scheduler sequential|local|distributed`. A third demo, `cube`, is a

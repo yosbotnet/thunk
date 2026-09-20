@@ -1,6 +1,7 @@
 services:
   node1:
     build: .
+    image: thunk
     hostname: node1
     environment:
       THUNK_NODE: thunk
@@ -8,6 +9,7 @@ services:
       THUNK_PEERS: thunk@node2,thunk@node3
   node2:
     build: .
+    image: thunk
     hostname: node2
     environment:
       THUNK_NODE: thunk
@@ -15,8 +17,20 @@ services:
       THUNK_PEERS: thunk@node1,thunk@node3
   node3:
     build: .
+    image: thunk
     hostname: node3
     environment:
       THUNK_NODE: thunk
       THUNK_COOKIE: thunk-demo
       THUNK_PEERS: thunk@node1,thunk@node2
+  # Extra nodes that join the running cluster knowing only node1. No
+  # hostname is set, so each replica is thunk@<container id> and it can be
+  # scaled: docker compose --profile join up -d --scale joiner=2
+  joiner:
+    image: thunk
+    profiles: [join]
+    depends_on: [node1]
+    environment:
+      THUNK_NODE: thunk
+      THUNK_COOKIE: thunk-demo
+      THUNK_PEERS: thunk@node1

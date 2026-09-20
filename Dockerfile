@@ -10,4 +10,6 @@ RUN mix compile
 
 # THUNK_NODE, THUNK_COOKIE and THUNK_PEERS come from compose.yaml. Short
 # names: the node is THUNK_NODE@<container hostname>, resolved by Compose DNS.
-CMD ["sh", "-c", "elixir --sname $THUNK_NODE --cookie $THUNK_COOKIE -S mix run --no-halt"]
+# Without a hostname in compose.yaml the hostname is the short container id,
+# which Docker also resolves, so scaled replicas get distinct node names.
+CMD ["sh", "-c", "elixir --sname ${THUNK_NODE:-thunk} --cookie $THUNK_COOKIE -S mix run --no-halt"]
