@@ -60,7 +60,7 @@ defmodule Thunk.Worker do
 
   def prelude, do: GenServer.call(@name, :prelude)
   def set_limit(n) when is_integer(n) and n >= 0, do: GenServer.call(@name, {:set_limit, n})
-  def stats(node \\ node()), do: GenServer.call({@name, node}, :stats)
+  def stats(node \\ node(), timeout \\ 5_000), do: GenServer.call({@name, node}, :stats, timeout)
 
   # Server
 

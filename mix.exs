@@ -17,7 +17,7 @@ defmodule Thunk.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :inets],
       mod: {Thunk.Application, []}
     ]
   end
