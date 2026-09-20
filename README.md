@@ -10,8 +10,8 @@ nodes with decentralized work stealing and a Docker Compose demo cluster.
 Every node is a peer; there is no coordinator. A piece of work whose
 thief crashes or whose node disappears is solved again by its owner, so a
 job survives losing nodes mid-run. Nodes can join a running cluster
-knowing a single seed. Termination detection, memoization and a
-dashboard remain optional extensions.
+knowing a single seed, and a web dashboard shows the nodes while jobs
+run. Termination detection and memoization remain optional extensions.
 
 ## Approved scope
 
@@ -92,6 +92,25 @@ its rows cost very different amounts of work, which is where small pieces
 and stealing matter most. Multi-node tests start peer
 nodes on the same machine and need a working `epmd`; they are skipped with
 a message if distribution cannot be started.
+
+## Dashboard
+
+`mix thunk.dashboard --port 4000` serves a web page at
+`http://localhost:4000` that shows every node of the cluster while jobs
+run: evaluators running out of the limit, deque length, steals, pieces
+given away, evaluated and recovered, and a chart of pieces evaluated per
+second over the last two minutes. It polls the workers every 500 ms; a
+node that stops answering stays on the page as down. The dashboard is a
+node of its own that joins the cluster and does not evaluate pieces. With
+the Compose cluster running, in a second terminal:
+
+```text
+docker compose exec node1 sh -c 'elixir --sname dash --cookie thunk-demo -S mix thunk.dashboard --port 4000'
+```
+
+Port 4000 of `node1` is published by `compose.yaml`. The server is a few
+lines of `:gen_tcp`, the page is plain HTML and JavaScript, and
+`/stats.json` returns the same data the page draws.
 
 ## Development
 
