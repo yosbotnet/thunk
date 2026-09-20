@@ -6,7 +6,8 @@ defmodule Thunk.Application do
   def start(_type, _args) do
     children = [
       {Task.Supervisor, name: Thunk.TaskSupervisor},
-      {Thunk.Worker, Application.get_env(:thunk, :worker, [])}
+      {Thunk.Worker, Application.get_env(:thunk, :worker, [])},
+      {Thunk.Membership, Application.get_env(:thunk, :membership, [])}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Thunk.Supervisor)

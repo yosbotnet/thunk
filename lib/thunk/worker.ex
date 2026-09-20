@@ -28,7 +28,6 @@ defmodule Thunk.Worker do
             limit: 0,
             prelude: nil,
             jobs: %{},
-            peers: [],
             steal: nil,
             timer: nil,
             backoff: 10,
@@ -71,7 +70,6 @@ defmodule Thunk.Worker do
 
     state = %__MODULE__{
       limit: Keyword.get(opts, :limit, System.schedulers_online()),
-      peers: Keyword.get(opts, :peers, []),
       min_backoff: Keyword.get(opts, :min_backoff, 10),
       max_backoff: Keyword.get(opts, :max_backoff, 100),
       prelude: Prelude.load()
@@ -79,7 +77,6 @@ defmodule Thunk.Worker do
 
     state = %{state | backoff: state.min_backoff}
     if Node.alive?(), do: :net_kernel.monitor_nodes(true)
-    if state.peers != [], do: send(self(), :connect)
     {:ok, balance(state)}
   end
 
@@ -220,17 +217,6 @@ defmodule Thunk.Worker do
     end
   end
 
-  def handle_info(:connect, state) do
-    missing = state.peers -- Node.list()
-    Enum.each(missing, &Node.connect/1)
-
-    if state.peers -- Node.list() != [] do
-      Process.send_after(self(), :connect, 1_000)
-    end
-
-    {:noreply, balance(state)}
-  end
-
   def handle_info({:nodeup, node}, state) do
     Logger.info("node up: #{node}")
     {:noreply, balance(state)}
@@ -291,23 +277,9 @@ defmodule Thunk.Worker do
   end
 
   defp env_opts do
-    peers =
-      case System.get_env("THUNK_PEERS") do
-        nil ->
-          []
-
-        list ->
-          list
-          |> String.split(",", trim: true)
-          |> Enum.map(&String.to_atom(String.trim(&1)))
-      end
-
-    limit =
-      case System.get_env("THUNK_LIMIT") do
-        nil -> []
-        n -> [limit: String.to_integer(n)]
-      end
-
-    [peers: peers] ++ limit
+    case System.get_env("THUNK_LIMIT") do
+      nil -> []
+      n -> [limit: String.to_integer(n)]
+    end
   end
 end

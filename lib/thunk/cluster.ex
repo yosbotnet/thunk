@@ -9,7 +9,7 @@ defmodule Thunk.Cluster do
   Any node can do this; there is no designated coordinator.
   """
 
-  alias Thunk.{Context, Worker}
+  alias Thunk.{Context, Membership, Worker}
   alias Thunk.Scheduler.Distributed
 
   @spec load(String.t()) :: Context.t()
@@ -22,6 +22,10 @@ defmodule Thunk.Cluster do
 
   @spec run(Context.t(), term) :: term
   def run(%Context{} = ctx, input), do: Thunk.run(ctx, input)
+
+  @doc "The thunk nodes that `node` knows about, itself included."
+  @spec members(node) :: [node]
+  def members(node \\ node()), do: Membership.members(node)
 
   @doc "Connects to the given nodes, returning those that could be reached."
   @spec connect([node]) :: [node]
