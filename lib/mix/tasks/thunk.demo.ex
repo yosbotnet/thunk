@@ -135,23 +135,23 @@ defmodule Mix.Tasks.Thunk.Demo do
   end
 
   defp program(:mergesort, t),
-    do: "(def main (lambda (xs) (mergesort xs (lambda (v) (lt (length v) #{t})))))"
+    do: "def main(xs) = mergesort(xs, fn(v) -> length(v) < #{t})"
 
   defp program(:wordcount, t),
-    do: "(def main (lambda (text) (word-count text (lambda (v) (lt (length v) #{t})))))"
+    do: "def main(text) = word_count(text, fn(v) -> length(v) < #{t})"
 
   defp program(:cube, t) do
     source = File.read!(Path.join(to_string(:code.priv_dir(:thunk)), "demos/cube.thunk"))
 
     source <>
-      "(def main (lambda (dims) (render (head dims) (head (tail dims)) (head (tail (tail dims))) (lambda (rows) (lt (length rows) #{t})))))"
+      "\ndef main(dims) = render(head(dims), head(tail(dims)), head(tail(tail(dims))), fn(rows) -> length(rows) < #{t})"
   end
 
   defp program(:mandelbrot, t) do
     source = File.read!(Path.join(to_string(:code.priv_dir(:thunk)), "demos/mandelbrot.thunk"))
 
     source <>
-      "(def main (lambda (d) (render (head d) (head (tail d)) (head (tail (tail d))) (lambda (rows) (lt (length rows) #{t})))))"
+      "\ndef main(d) = render(head(d), head(tail(d)), head(tail(tail(d))), fn(rows) -> length(rows) < #{t})"
   end
 
   defp input(:mergesort, opts, seed, _frame, _frames) do

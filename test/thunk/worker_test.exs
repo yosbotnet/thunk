@@ -6,8 +6,8 @@ defmodule Thunk.WorkerTest do
   # A piece whose work is a trivial base case. Never evaluated in these
   # tests: the limit is 0, so nothing is started locally.
   defp piece(ref \\ make_ref()) do
-    closure = Thunk.eval("(lambda (v) v)")
-    truthy = Thunk.eval("(lambda (v) true)")
+    closure = Thunk.eval("fn(v) -> v")
+    truthy = Thunk.eval("fn(v) -> true")
     work = %Work{value: 1, pred: truthy, split: closure, base: closure, merge: closure}
     %Piece{work: work, ref: ref, reply_to: self(), job: nil}
   end

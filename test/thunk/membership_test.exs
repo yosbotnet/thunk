@@ -41,11 +41,11 @@ defmodule Thunk.MembershipTest do
     :ok = Cluster.wait_for_peers(1, 10_000)
 
     program = """
-    (def spin (lambda (n) (if (eq n 0) 0 (spin (sub n 1)))))
-    (def main (lambda (xs)
-      (dc xs (lambda (v) (lt (length v) 4)) halves
-          (lambda (v) (let z (spin 300000) v))
-          append)))
+    def spin(n) = if n == 0 then 0 else spin(n - 1)
+    def main(xs) =
+      dc(xs, fn(v) -> length(v) < 4, halves,
+         fn(v) -> let z = spin(300000) in v,
+         append)
     """
 
     ctx = Cluster.load(program)

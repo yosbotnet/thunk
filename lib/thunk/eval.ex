@@ -7,8 +7,9 @@ defmodule Thunk.Eval do
   the scheduler. Symbols are resolved in the environment, then in the
   definitions, then among the primitives.
 
-  Special forms: lambda, if, let, def (top level only, handled by
-  Thunk.load) and dc. Any other list is an application.
+  Special forms: lambda (written fn in the source), if, let, def (top
+  level only, handled by Thunk.load) and dc. Any other list is an
+  application.
 
   The branches of if, the body of let, the body of a closure and the
   application itself are in tail position, so loops written as recursive

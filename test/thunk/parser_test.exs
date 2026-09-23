@@ -3,174 +3,206 @@ defmodule Thunk.ParserTest do
 
   alias Thunk.Parser
 
-  describe "integers" do
-    test "parses positive and negative integers" do
-      assert Parser.parse("42") == {:ok, [42]}
-      assert Parser.parse("-7") == {:ok, [-7]}
-      assert Parser.parse("0") == {:ok, [0]}
+  defp one(source) do
+    {:ok, [form]} = Parser.parse(source)
+    form
+  end
+
+  describe "literals" do
+    test "integers, negative integers and booleans" do
+      assert one("42") == 42
+      assert one("-7") == -7
+      assert one("0") == 0
+      assert one("true") == true
+      assert one("false") == false
     end
 
-    test "a lone minus is a symbol" do
-      assert Parser.parse("-") == {:ok, [:-]}
-      assert Parser.parse("(- 5 3)") == {:ok, [[:-, 5, 3]]}
+    test "the empty list" do
+      assert one("[]") == []
+      assert one("[ ]") == []
     end
 
-    test "a minus followed by letters is a symbol" do
-      assert Parser.parse("-x") == {:ok, [:"-x"]}
-    end
-
-    test "a leading plus does not make a number" do
-      assert Parser.parse("+5") == {:ok, [:"+5"]}
+    test "strings and their escapes" do
+      assert one(~S("hello world")) == "hello world"
+      assert one(~S("")) == ""
+      assert one(~S("a\"b")) == ~S(a"b)
+      assert one(~S("a\\b")) == "a\\b"
+      assert one(~S("a\nb")) == "a\nb"
+      assert one(~S("a\tb")) == "a\tb"
+      assert one("\"line one\nline two\"") == "line one\nline two"
+      assert one(~S("città è ünïcode 日本")) == "città è ünïcode 日本"
     end
   end
 
-  describe "booleans" do
-    test "true and false become Elixir booleans" do
-      assert Parser.parse("true false") == {:ok, [true, false]}
+  describe "names" do
+    test "become atoms and may end with a question mark" do
+      assert one("xs") == :xs
+      assert one("merge_sorted") == :merge_sorted
+      assert one("nil?") == :nil?
     end
 
-    test "symbols that only start with true or false stay symbols" do
-      assert Parser.parse("truthy false?") == {:ok, [:truthy, :false?]}
-    end
-  end
-
-  describe "strings" do
-    test "plain string" do
-      assert Parser.parse(~S("hello world")) == {:ok, ["hello world"]}
-    end
-
-    test "empty string" do
-      assert Parser.parse(~S("")) == {:ok, [""]}
-    end
-
-    test "supported escapes" do
-      assert Parser.parse(~S("a\"b")) == {:ok, [~S(a"b)]}
-      assert Parser.parse(~S("a\\b")) == {:ok, ["a\\b"]}
-      assert Parser.parse(~S("a\nb")) == {:ok, ["a\nb"]}
-      assert Parser.parse(~S("a\tb")) == {:ok, ["a\tb"]}
-    end
-
-    test "literal newline inside a string" do
-      assert Parser.parse("\"line one\nline two\"") == {:ok, ["line one\nline two"]}
-    end
-
-    test "invalid escape is an error at the backslash" do
-      assert Parser.parse(~S("ab\q")) == {:error, {1, 4, "invalid escape"}}
-    end
-
-    test "unterminated string reports the end of input" do
-      assert Parser.parse(~S("abc)) == {:error, {1, 5, "unterminated string"}}
-    end
-
-    test "unterminated string spanning lines" do
-      assert Parser.parse("(x \"ab\ncd") == {:error, {2, 3, "unterminated string"}}
-    end
-
-    test "unicode in strings" do
-      assert Parser.parse(~S("città è ünïcode 日本")) == {:ok, ["città è ünïcode 日本"]}
+    test "keywords are not names, but names may start with a keyword" do
+      assert one("insert") == :insert
+      assert one("iffy") == :iffy
+      assert one("truthy") == :truthy
+      assert {:error, _} = Parser.parse("in")
     end
   end
 
-  describe "symbols" do
-    test "symbols with punctuation" do
-      assert Parser.parse("merge-sorted nil? + < <= set! a.b") ==
-               {:ok, [:"merge-sorted", :nil?, :+, :<, :<=, :set!, :"a.b"]}
+  describe "operators" do
+    test "are calls of the primitives" do
+      assert one("a + b") == [:add, :a, :b]
+      assert one("a - b") == [:sub, :a, :b]
+      assert one("a * b") == [:mul, :a, :b]
+      assert one("a / b") == [:div, :a, :b]
+      assert one("a % b") == [:mod, :a, :b]
+      assert one("a < b") == [:lt, :a, :b]
+      assert one("a == b") == [:eq, :a, :b]
+      assert one("a :: b") == [:cons, :a, :b]
     end
 
-    test "unicode in symbols" do
-      assert Parser.parse("città λ") == {:ok, [:città, :λ]}
+    test "precedence" do
+      assert one("x + n / x") == [:add, :x, [:div, :n, :x]]
+      assert one("a * b + c < d") == [:lt, [:add, [:mul, :a, :b], :c], :d]
+      assert one("x + 1 :: xs") == [:cons, [:add, :x, 1], :xs]
+      assert one("(a + b) * c") == [:mul, [:add, :a, :b], :c]
     end
 
-    test "symbols end at a parenthesis or a quote" do
-      assert Parser.parse("(foo)") == {:ok, [[:foo]]}
-      assert Parser.parse(~S(foo"bar")) == {:ok, [:foo, "bar"]}
+    test "arithmetic groups to the left, cons to the right" do
+      assert one("a - b - c") == [:sub, [:sub, :a, :b], :c]
+      assert one("a / b * c") == [:mul, [:div, :a, :b], :c]
+      assert one("1 :: 2 :: []") == [:cons, 1, [:cons, 2, []]]
+    end
+
+    test "comparisons do not chain" do
+      assert {:error, {1, 7, _}} = Parser.parse("a < b < c")
+      assert {:error, _} = Parser.parse("a == b == c")
+    end
+
+    test "unary minus binds tighter than any binary operator" do
+      assert one("-x") == [:sub, 0, :x]
+      assert one("-x % 3") == [:mod, [:sub, 0, :x], 3]
+      assert one("a - -3") == [:sub, :a, -3]
     end
   end
 
-  describe "lists" do
-    test "empty list" do
-      assert Parser.parse("()") == {:ok, [[]]}
-      assert Parser.parse("( )") == {:ok, [[]]}
+  describe "calls" do
+    test "with any number of arguments" do
+      assert one("f()") == [:f]
+      assert one("f(x)") == [:f, :x]
+      assert one("f(x, y + 1, g(z))") == [:f, :x, [:add, :y, 1], [:g, :z]]
     end
 
-    test "nested lists" do
-      assert Parser.parse("(def halves (lambda (xs) (split-at xs (div (length xs) 2))))") ==
+    test "of the result of a call or of a parenthesized expression" do
+      assert one("f(1)(2)") == [[:f, 1], 2]
+      assert one("(fn(x) -> x)(1)") == [[:lambda, [:x], :x], 1]
+    end
+
+    test "dc is an ordinary call" do
+      assert one("dc(xs, small?, halves, base, merge)") ==
+               [:dc, :xs, :small?, :halves, :base, :merge]
+    end
+  end
+
+  describe "special forms" do
+    test "fn" do
+      assert one("fn(x, y) -> x + y") == [:lambda, [:x, :y], [:add, :x, :y]]
+      assert one("fn() -> 1") == [:lambda, [], 1]
+    end
+
+    test "let" do
+      assert one("let x = 2 in x * x") == [:let, :x, 2, [:mul, :x, :x]]
+    end
+
+    test "if" do
+      assert one("if n < 2 then n else f(n)") == [:if, [:lt, :n, 2], :n, [:f, :n]]
+    end
+
+    test "bodies extend as far to the right as possible" do
+      assert one("if c then a else b + 1") == [:if, :c, :a, [:add, :b, 1]]
+      assert one("let x = 1 in x + 1") == [:let, :x, 1, [:add, :x, 1]]
+      assert one("fn(x) -> x + 1") == [:lambda, [:x], [:add, :x, 1]]
+      assert one("if a then b else if c then d else e") == [:if, :a, :b, [:if, :c, :d, :e]]
+    end
+
+    test "a comma ends a body" do
+      assert one("f(fn(x) -> x, ys)") == [:f, [:lambda, [:x], :x], :ys]
+    end
+  end
+
+  describe "programs" do
+    test "definitions of values and of functions" do
+      assert Parser.parse("def one = 1") == {:ok, [[:def, :one, 1]]}
+      assert Parser.parse("def k() = 1") == {:ok, [[:def, :k, [:lambda, [], 1]]]}
+
+      assert Parser.parse("def halves(xs) = split_at(length(xs) / 2, xs)") ==
                {:ok,
                 [
                   [
                     :def,
                     :halves,
-                    [:lambda, [:xs], [:"split-at", :xs, [:div, [:length, :xs], 2]]]
+                    [:lambda, [:xs], [:split_at, [:div, [:length, :xs], 2], :xs]]
                   ]
                 ]}
     end
 
-    test "deeply nested empty lists" do
-      assert Parser.parse("((()))") == {:ok, [[[[]]]]}
-    end
-  end
-
-  describe "comments and whitespace" do
-    test "comments run to the end of the line" do
-      assert Parser.parse("; only a comment") == {:ok, []}
-      assert Parser.parse("(a ; inside\n b) ; after") == {:ok, [[:a, :b]]}
-    end
-
-    test "a semicolon ends a symbol" do
-      assert Parser.parse("foo;bar\nbaz") == {:ok, [:foo, :baz]}
-    end
-
-    test "tabs, carriage returns and newlines separate tokens" do
-      assert Parser.parse("a\tb\r\nc\n d") == {:ok, [:a, :b, :c, :d]}
+    test "several definitions in a row" do
+      assert Parser.parse("def a = 1\ndef b = a + 1") ==
+               {:ok, [[:def, :a, 1], [:def, :b, [:add, :a, 1]]]}
     end
 
     test "empty input" do
       assert Parser.parse("") == {:ok, []}
       assert Parser.parse("  \n  ") == {:ok, []}
+      assert Parser.parse("# only a comment") == {:ok, []}
     end
   end
 
-  describe "multiple top-level forms" do
-    test "mixed forms with a comment" do
-      assert Parser.parse("(if (lt n 2) n (add 1 -3)) ; comment\n\"a\\nb\" true ()") ==
-               {:ok, [[:if, [:lt, :n, 2], :n, [:add, 1, -3]], "a\nb", true, []]}
+  describe "comments and whitespace" do
+    test "comments run to the end of the line" do
+      assert one("f(a, # inside\n b) # after") == [:f, :a, :b]
+    end
+
+    test "tabs, carriage returns and newlines separate tokens" do
+      assert one("f(a,\tb,\r\nc,\n d)") == [:f, :a, :b, :c, :d]
     end
   end
 
   describe "errors" do
-    test "unexpected closing parenthesis" do
-      assert Parser.parse(")") == {:error, {1, 1, "unexpected )"}}
-      assert Parser.parse("(a b))") == {:error, {1, 6, "unexpected )"}}
+    test "carry the line and column of the token" do
+      assert Parser.parse("f(a))") == {:error, {1, 5, "syntax error before: ')'"}}
+
+      assert Parser.parse("def f(x) =\n  x +\n  then") ==
+               {:error, {3, 3, "syntax error before: then"}}
     end
 
-    test "unexpected closing parenthesis on a later line" do
-      assert Parser.parse("(a)\n  )") == {:error, {2, 3, "unexpected )"}}
+    test "missing tokens at the end of the input" do
+      assert Parser.parse("if a then b") == {:error, {1, 12, "unexpected end of input"}}
+      assert Parser.parse("f(a") == {:error, {1, 4, "unexpected end of input"}}
     end
 
-    # For unterminated constructs the reported position is the one just past
-    # the last character of the input, i.e. where the missing ")" would go.
-    test "missing closing parenthesis reports the end of input" do
-      assert Parser.parse("(a b") == {:error, {1, 5, "unexpected end of input"}}
-      assert Parser.parse("(a\n(b") == {:error, {2, 3, "unexpected end of input"}}
+    test "two expressions in a row are an error" do
+      assert {:error, {1, 3, _}} = Parser.parse("1 2")
     end
 
-    test "the first error wins" do
-      assert Parser.parse("(a))\n(b") == {:error, {1, 4, "unexpected )"}}
+    test "characters that are not part of the language" do
+      assert Parser.parse("x @ y") == {:error, {1, 3, ~S(illegal characters "@")}}
+    end
+
+    test "bad strings" do
+      assert {:error, {1, _, "invalid escape"}} = Parser.parse(~S("ab\q"))
+      assert {:error, {1, _, "unterminated string"}} = Parser.parse(~S("abc))
     end
   end
 
   describe "parse!/1" do
     test "returns the forms directly" do
-      assert Parser.parse!("(a 1)") == [[:a, 1]]
+      assert Parser.parse!("f(1)") == [[:f, 1]]
     end
 
     test "raises ArgumentError with message and position" do
-      assert_raise ArgumentError, "line 1, column 1: unexpected )", fn ->
+      assert_raise ArgumentError, "line 1, column 1: syntax error before: ')'", fn ->
         Parser.parse!(")")
-      end
-
-      assert_raise ArgumentError, "line 1, column 5: unterminated string", fn ->
-        Parser.parse!(~S("abc))
       end
     end
   end

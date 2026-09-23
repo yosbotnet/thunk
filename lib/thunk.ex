@@ -1,11 +1,11 @@
 defmodule Thunk do
   @moduledoc """
-  Thunk evaluates pure computations written in a small Lisp-like
+  Thunk evaluates pure computations written in a small functional
   language. A program is a sequence of top-level definitions; running it
   applies the definition called main to an input value.
 
       ctx = Thunk.Prelude.load()
-      ctx = Thunk.load("(def main (lambda (xs) (length xs)))", ctx)
+      ctx = Thunk.load("def main(xs) = length(xs)", ctx)
       Thunk.run(ctx, [1, 2, 3])
 
   The scheduler in the context decides how divide-and-conquer work is

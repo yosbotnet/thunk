@@ -6,7 +6,7 @@ defmodule Thunk.CubeTest do
   alias Thunk.Image
   alias Thunk.Scheduler.{Local, Sequential}
 
-  @main "(def main (lambda (dims) (render (head dims) (head (tail dims)) (head (tail (tail dims))) (lambda (rows) (lt (length rows) 4)))))"
+  @main "def main(dims) = render(head(dims), head(tail(dims)), head(tail(tail(dims))), fn(rows) -> length(rows) < 4)"
 
   # The orbit angle that puts the camera at (3, 2.2, 4), atan(4/3).
   @angle 3798
@@ -23,41 +23,41 @@ defmodule Thunk.CubeTest do
   end
 
   test "prelude helpers used by the renderer", %{ctx: ctx} do
-    assert ev(ctx, "(range 0 4)") == [0, 1, 2, 3]
-    assert ev(ctx, "(range 2 2)") == []
-    assert ev(ctx, "(max 3 5)") == 5
-    assert ev(ctx, "(min 3 5)") == 3
+    assert ev(ctx, "range(0, 4)") == [0, 1, 2, 3]
+    assert ev(ctx, "range(2, 2)") == []
+    assert ev(ctx, "max(3, 5)") == 5
+    assert ev(ctx, "min(3, 5)") == 3
 
     for n <- [0, 1, 2, 3, 4, 15, 16, 17, 99, 100, 123_456_789, 10_000_000_000] do
-      assert ev(ctx, "(isqrt n)", %{n: n}) == :math.sqrt(n) |> floor()
+      assert ev(ctx, "isqrt(n)", %{n: n}) == :math.sqrt(n) |> floor()
     end
   end
 
   test "fixed point vectors", %{ctx: ctx} do
-    assert ev(ctx, "(fx-mul (fx 3) (fx 2))") == 6 * 4096
-    assert ev(ctx, "(fx-div (fx 3) (fx 2))") == div(3 * 4096, 2)
-    assert ev(ctx, "(v-dot (vec one 0 0) (vec one 0 0))") == 4096
-    assert ev(ctx, "(v-cross (vec one 0 0) (vec 0 one 0))") == [0, 0, 4096]
-    assert ev(ctx, "(v-len (vec (fx 3) (fx 4) 0))") == 5 * 4096
-    assert ev(ctx, "(v-len (v-norm (vec (fx 3) (fx 4) (fx 12))))") in 4090..4096
+    assert ev(ctx, "fx_mul(fx(3), fx(2))") == 6 * 4096
+    assert ev(ctx, "fx_div(fx(3), fx(2))") == div(3 * 4096, 2)
+    assert ev(ctx, "v_dot(vec(one, 0, 0), vec(one, 0, 0))") == 4096
+    assert ev(ctx, "v_cross(vec(one, 0, 0), vec(0, one, 0))") == [0, 0, 4096]
+    assert ev(ctx, "v_len(vec(fx(3), fx(4), 0))") == 5 * 4096
+    assert ev(ctx, "v_len(v_norm(vec(fx(3), fx(4), fx(12))))") in 4090..4096
   end
 
   test "sine and cosine in fixed point", %{ctx: ctx} do
     for degrees <- Enum.take_every(-360..720, 15) do
       radians = degrees * :math.pi() / 180
       angle = round(radians * 4096)
-      assert_in_delta ev(ctx, "(sin a)", %{a: angle}) / 4096, :math.sin(radians), 0.01
-      assert_in_delta ev(ctx, "(cos a)", %{a: angle}) / 4096, :math.cos(radians), 0.01
+      assert_in_delta ev(ctx, "sin(a)", %{a: angle}) / 4096, :math.sin(radians), 0.01
+      assert_in_delta ev(ctx, "cos(a)", %{a: angle}) / 4096, :math.cos(radians), 0.01
     end
   end
 
   test "the camera orbits at constant distance", %{ctx: ctx} do
     for angle <- [0, 3798, 10_000, 20_000] do
-      eye = ev(ctx, "(eye-at a)", %{a: angle})
-      assert_in_delta ev(ctx, "(v-len e)", %{e: eye}) / 4096, :math.sqrt(25 + 2.2 * 2.2), 0.02
+      eye = ev(ctx, "eye_at(a)", %{a: angle})
+      assert_in_delta ev(ctx, "v_len(e)", %{e: eye}) / 4096, :math.sqrt(25 + 2.2 * 2.2), 0.02
     end
 
-    assert ev(ctx, "(eye-at a)", %{a: @angle})
+    assert ev(ctx, "eye_at(a)", %{a: @angle})
            |> Enum.map(&(&1 / 4096))
            |> Enum.map(&Float.round(&1, 1)) ==
              [3.0, 2.2, 4.0]

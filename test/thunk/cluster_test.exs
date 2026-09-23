@@ -28,7 +28,7 @@ defmodule Thunk.ClusterTest do
     xs = Enum.shuffle(1..10_000)
 
     ctx =
-      Cluster.load("(def main (lambda (xs) (mergesort xs (lambda (v) (lt (length v) 50)))))")
+      Cluster.load("def main(xs) = mergesort(xs, fn(v) -> length(v) < 50)")
 
     assert Cluster.run(ctx, xs) == Thunk.run(Thunk.with_scheduler(ctx, Sequential), xs)
 
@@ -38,8 +38,8 @@ defmodule Thunk.ClusterTest do
 
   test "program definitions travel with the job" do
     program = """
-    (def triple (lambda (n) (mul n 3)))
-    (def main (lambda (xs) (pmap triple xs (lambda (v) (lt (length v) 4)))))
+    def triple(n) = n * 3
+    def main(xs) = pmap(triple, xs, fn(v) -> length(v) < 4)
     """
 
     ctx = Cluster.load(program)
@@ -48,10 +48,10 @@ defmodule Thunk.ClusterTest do
 
   test "an error on a remote node surfaces as the same language error" do
     program = """
-    (def main (lambda (xs)
-      (dc xs (lambda (v) (lt (length v) 3)) halves
-          (lambda (v) (if (eq (head v) 8) (head ()) v))
-          append)))
+    def main(xs) =
+      dc(xs, fn(v) -> length(v) < 3, halves,
+         fn(v) -> if head(v) == 8 then head([]) else v,
+         append)
     """
 
     ctx = Cluster.load(program)
@@ -68,11 +68,11 @@ defmodule Thunk.ClusterTest do
 
     # Slow the base cases so the victim still has work when it dies.
     program = """
-    (def spin (lambda (n) (if (eq n 0) 0 (spin (sub n 1)))))
-    (def main (lambda (xs)
-      (dc xs (lambda (v) (lt (length v) 4)) halves
-          (lambda (v) (let z (spin 1000000) v))
-          append)))
+    def spin(n) = if n == 0 then 0 else spin(n - 1)
+    def main(xs) =
+      dc(xs, fn(v) -> length(v) < 4, halves,
+         fn(v) -> let z = spin(1000000) in v,
+         append)
     """
 
     ctx = Cluster.load(program)

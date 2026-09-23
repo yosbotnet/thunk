@@ -1,176 +1,163 @@
-; A raytraced cube in fixed-point arithmetic.
-;
-; The language has integers only, so real numbers are stored scaled by
-; `one` (4096, twelve fractional bits). Vectors are three-element lists.
-; The cube is the axis-aligned box from -1 to 1 on every axis, seen from
-; a camera placed off all three axes so that three faces are visible.
-; Every pixel casts one ray and tests it against the box with the slab
-; method; the face the ray enters through gives the normal for shading.
-;
-; The image is rendered row by row: pmap over the row indices, so the
-; unit of parallel work is a bunch of rows.
+# A raytraced cube in fixed-point arithmetic.
+#
+# The language has integers only, so real numbers are stored scaled by
+# `one` (4096, twelve fractional bits). Vectors are three-element lists.
+# The cube is the axis-aligned box from -1 to 1 on every axis, seen from
+# a camera placed off all three axes so that three faces are visible.
+# Every pixel casts one ray and tests it against the box with the slab
+# method; the face the ray enters through gives the normal for shading.
+#
+# The image is rendered row by row: pmap over the row indices, so the
+# unit of parallel work is a bunch of rows.
 
-; Fixed point.
+# Fixed point.
 
-(def one 4096)
+def one = 4096
 
-(def fx (lambda (n) (mul n one)))
+def fx(n) = n * one
 
-(def fx-frac (lambda (num den) (div (mul num one) den)))
+def fx_frac(num, den) = num * one / den
 
-(def fx-mul (lambda (a b) (div (mul a b) one)))
+def fx_mul(a, b) = a * b / one
 
-(def fx-div (lambda (a b) (div (mul a one) b)))
+def fx_div(a, b) = a * one / b
 
-; Vectors.
+# Vectors.
 
-(def vec (lambda (x y z) (cons x (cons y (cons z ())))))
+def vec(x, y, z) = x :: y :: z :: []
 
-(def vx (lambda (v) (head v)))
-(def vy (lambda (v) (head (tail v))))
-(def vz (lambda (v) (head (tail (tail v)))))
+def vx(v) = head(v)
+def vy(v) = head(tail(v))
+def vz(v) = head(tail(tail(v)))
 
-(def v-add (lambda (a b)
-  (vec (add (vx a) (vx b)) (add (vy a) (vy b)) (add (vz a) (vz b)))))
+def v_add(a, b) = vec(vx(a) + vx(b), vy(a) + vy(b), vz(a) + vz(b))
 
-(def v-sub (lambda (a b)
-  (vec (sub (vx a) (vx b)) (sub (vy a) (vy b)) (sub (vz a) (vz b)))))
+def v_sub(a, b) = vec(vx(a) - vx(b), vy(a) - vy(b), vz(a) - vz(b))
 
-(def v-neg (lambda (v) (v-sub (vec 0 0 0) v)))
+def v_neg(v) = v_sub(vec(0, 0, 0), v)
 
-(def v-scale (lambda (v k)
-  (vec (fx-mul (vx v) k) (fx-mul (vy v) k) (fx-mul (vz v) k))))
+def v_scale(v, k) = vec(fx_mul(vx(v), k), fx_mul(vy(v), k), fx_mul(vz(v), k))
 
-(def v-dot (lambda (a b)
-  (add (fx-mul (vx a) (vx b)) (add (fx-mul (vy a) (vy b)) (fx-mul (vz a) (vz b))))))
+def v_dot(a, b) =
+  fx_mul(vx(a), vx(b)) + (fx_mul(vy(a), vy(b)) + fx_mul(vz(a), vz(b)))
 
-(def v-cross (lambda (a b)
-  (vec (sub (fx-mul (vy a) (vz b)) (fx-mul (vz a) (vy b)))
-       (sub (fx-mul (vz a) (vx b)) (fx-mul (vx a) (vz b)))
-       (sub (fx-mul (vx a) (vy b)) (fx-mul (vy a) (vx b))))))
+def v_cross(a, b) =
+  vec(fx_mul(vy(a), vz(b)) - fx_mul(vz(a), vy(b)),
+      fx_mul(vz(a), vx(b)) - fx_mul(vx(a), vz(b)),
+      fx_mul(vx(a), vy(b)) - fx_mul(vy(a), vx(b)))
 
-; The dot product is already scaled by one, so the root of (dot * one)
-; is the length scaled by one.
-(def v-len (lambda (v) (isqrt (mul (v-dot v v) one))))
+# The dot product is already scaled by one, so the root of dot * one
+# is the length scaled by one.
+def v_len(v) = isqrt(v_dot(v, v) * one)
 
-(def v-norm (lambda (v)
-  (let l (v-len v)
-    (vec (fx-div (vx v) l) (fx-div (vy v) l) (fx-div (vz v) l)))))
+def v_norm(v) =
+  let l = v_len(v) in
+  vec(fx_div(vx(v), l), fx_div(vy(v), l), fx_div(vz(v), l))
 
-; Trigonometry, for the camera orbit. Angles are radians scaled by one.
+# Trigonometry, for the camera orbit. Angles are radians scaled by one.
 
-(def pi 12868)
-(def two-pi 25736)
-(def half-pi 6434)
+def pi = 12868
+def two_pi = 25736
+def half_pi = 6434
 
-; Brings an angle into the interval from -pi to pi.
-(def wrap (lambda (x)
-  (if (lt pi x)
-    (wrap (sub x two-pi))
-    (if (lt x (sub 0 pi))
-      (wrap (add x two-pi))
-      x))))
+# Brings an angle into the interval from -pi to pi.
+def wrap(x) =
+  if pi < x then wrap(x - two_pi)
+  else if x < -pi then wrap(x + two_pi)
+  else x
 
-; Five terms of the Taylor series, good to about three decimals over
-; the whole interval.
-(def sin (lambda (a)
-  (let x (wrap a)
-    (let x2 (fx-mul x x)
-      (let x3 (fx-mul x2 x)
-        (let x5 (fx-mul x3 x2)
-          (let x7 (fx-mul x5 x2)
-            (let x9 (fx-mul x7 x2)
-              (add (sub x (div x3 6))
-                   (sub (div x5 120) (sub (div x7 5040) (div x9 362880))))))))))))
+# Five terms of the Taylor series, good to about three decimals over
+# the whole interval.
+def sin(a) =
+  let x = wrap(a) in
+  let x2 = fx_mul(x, x) in
+  let x3 = fx_mul(x2, x) in
+  let x5 = fx_mul(x3, x2) in
+  let x7 = fx_mul(x5, x2) in
+  let x9 = fx_mul(x7, x2) in
+  (x - x3 / 6) + (x5 / 120 - (x7 / 5040 - x9 / 362880))
 
-(def cos (lambda (a) (sin (add a half-pi))))
+def cos(a) = sin(a + half_pi)
 
-; Scene. The light and the size of the world are fixed; the camera
-; orbits the cube at height 2.2, five units from the vertical axis, and
-; is built once per frame from the orbit angle.
+# Scene. The light and the size of the world are fixed; the camera
+# orbits the cube at height 2.2, five units from the vertical axis, and
+# is built once per frame from the orbit angle.
 
-(def light (v-norm (vec (fx-frac 5 10) one (fx-frac 7 10))))
-(def far-away (mul one 100000))
+def light = v_norm(vec(fx_frac(5, 10), one, fx_frac(7, 10)))
+def far_away = one * 100000
 
-(def eye-at (lambda (angle)
-  (vec (fx-mul (fx 5) (cos angle)) (fx-frac 22 10) (fx-mul (fx 5) (sin angle)))))
+def eye_at(angle) =
+  vec(fx_mul(fx(5), cos(angle)), fx_frac(22, 10), fx_mul(fx(5), sin(angle)))
 
-; A camera is the list (eye forward right up).
-(def camera (lambda (eye)
-  (let forward (v-norm (v-sub (vec 0 0 0) eye))
-    (let right (v-norm (v-cross forward (vec 0 one 0)))
-      (cons eye (cons forward (cons right (cons (v-cross right forward) ()))))))))
+# A camera is the list [eye, forward, right, up].
+def camera(eye) =
+  let forward = v_norm(v_sub(vec(0, 0, 0), eye)) in
+  let right = v_norm(v_cross(forward, vec(0, one, 0))) in
+  eye :: forward :: right :: v_cross(right, forward) :: []
 
-(def cam-eye (lambda (c) (head c)))
-(def cam-forward (lambda (c) (head (tail c))))
-(def cam-right (lambda (c) (head (tail (tail c)))))
-(def cam-up (lambda (c) (head (tail (tail (tail c))))))
+def cam_eye(c) = head(c)
+def cam_forward(c) = head(tail(c))
+def cam_right(c) = head(tail(tail(c)))
+def cam_up(c) = head(tail(tail(tail(c))))
 
-; Direction of the ray through pixel (i j) of a w by h image. The view
-; spans 0.4 units left and right at unit distance; rows use the same
-; scale so pixels stay square.
-(def ray-dir (lambda (i j w h cam)
-  (let u (div (mul (fx (sub (add (mul 2 i) 1) w)) 4) (mul w 10))
-    (let v (div (mul (fx (sub h (add (mul 2 j) 1))) 4) (mul w 10))
-      (v-add (cam-forward cam)
-             (v-add (v-scale (cam-right cam) u) (v-scale (cam-up cam) v)))))))
+# Direction of the ray through pixel (i, j) of a w by h image. The view
+# spans 0.4 units left and right at unit distance; rows use the same
+# scale so pixels stay square.
+def ray_dir(i, j, w, h, cam) =
+  let u = fx(2 * i + 1 - w) * 4 / (w * 10) in
+  let v = fx(h - (2 * j + 1)) * 4 / (w * 10) in
+  v_add(cam_forward(cam), v_add(v_scale(cam_right(cam), u), v_scale(cam_up(cam), v)))
 
-; Slab test on one axis: the interval of t where the ray is between -1
-; and 1 on that axis, as a (near far) pair. A ray parallel to the axis
-; is either always inside or never.
-(def slab (lambda (o d)
-  (if (eq d 0)
-    (if (lt o (sub 0 one))
-      (cons far-away (cons (sub 0 far-away) ()))
-      (if (lt one o)
-        (cons far-away (cons (sub 0 far-away) ()))
-        (cons (sub 0 far-away) (cons far-away ()))))
-    (let t1 (fx-div (sub (sub 0 one) o) d)
-      (let t2 (fx-div (sub one o) d)
-        (cons (min t1 t2) (cons (max t1 t2) ())))))))
+# Slab test on one axis: the interval of t where the ray is between -1
+# and 1 on that axis, as a [near, far] pair. A ray parallel to the axis
+# is either always inside or never.
+def slab(o, d) =
+  if d == 0 then
+    if o < -one then far_away :: -far_away :: []
+    else if one < o then far_away :: -far_away :: []
+    else -far_away :: far_away :: []
+  else
+    let t1 = fx_div(-one - o, d) in
+    let t2 = fx_div(one - o, d) in
+    min(t1, t2) :: max(t1, t2) :: []
 
-(def near (lambda (s) (head s)))
-(def far (lambda (s) (head (tail s))))
+def near(s) = head(s)
+def far(s) = head(tail(s))
 
-; The normal of the face the ray enters: the axis whose slab is entered
-; last, pointing against the ray.
-(def signed (lambda (axis dcomp) (if (lt dcomp 0) axis (v-neg axis))))
+# The normal of the face the ray enters: the axis whose slab is entered
+# last, pointing against the ray.
+def signed(axis, dcomp) = if dcomp < 0 then axis else v_neg(axis)
 
-(def face-normal (lambda (sx sy sz tmin d)
-  (if (eq (near sx) tmin)
-    (signed (vec one 0 0) (vx d))
-    (if (eq (near sy) tmin)
-      (signed (vec 0 one 0) (vy d))
-      (signed (vec 0 0 one) (vz d))))))
+def face_normal(sx, sy, sz, tmin, d) =
+  if near(sx) == tmin then signed(vec(one, 0, 0), vx(d))
+  else if near(sy) == tmin then signed(vec(0, one, 0), vy(d))
+  else signed(vec(0, 0, one), vz(d))
 
-; Flat shading: 15 percent ambient plus 85 percent diffuse, as a grey
-; level from 0 to 255.
-(def shade (lambda (n)
-  (let diffuse (max 0 (v-dot n light))
-    (min 255 (div (mul 255 (add (div (mul one 15) 100) (div (mul diffuse 85) 100))) one)))))
+# Flat shading: 15 percent ambient plus 85 percent diffuse, as a grey
+# level from 0 to 255.
+def shade(n) =
+  let diffuse = max(0, v_dot(n, light)) in
+  min(255, 255 * (one * 15 / 100 + diffuse * 85 / 100) / one)
 
-(def background (lambda (j h) (add 16 (div (mul 48 j) h))))
+def background(j, h) = 16 + 48 * j / h
 
-(def pixel (lambda (i j w h cam)
-  (let d (ray-dir i j w h cam)
-    (let eye (cam-eye cam)
-      (let sx (slab (vx eye) (vx d))
-        (let sy (slab (vy eye) (vy d))
-          (let sz (slab (vz eye) (vz d))
-            (let tmin (max (near sx) (max (near sy) (near sz)))
-              (let tmax (min (far sx) (min (far sy) (far sz)))
-                (if (lt tmax tmin)
-                  (background j h)
-                  (if (lt tmax 0)
-                    (background j h)
-                    (shade (face-normal sx sy sz tmin d)))))))))))))
+def pixel(i, j, w, h, cam) =
+  let d = ray_dir(i, j, w, h, cam) in
+  let eye = cam_eye(cam) in
+  let sx = slab(vx(eye), vx(d)) in
+  let sy = slab(vy(eye), vy(d)) in
+  let sz = slab(vz(eye), vz(d)) in
+  let tmin = max(near(sx), max(near(sy), near(sz))) in
+  let tmax = min(far(sx), min(far(sy), far(sz))) in
+  if tmax < tmin then background(j, h)
+  else if tmax < 0 then background(j, h)
+  else shade(face_normal(sx, sy, sz, tmin, d))
 
-(def render-row (lambda (j w h cam)
-  (map (lambda (i) (pixel i j w h cam)) (range 0 w))))
+def render_row(j, w, h, cam) = map(fn(i) -> pixel(i, j, w, h, cam), range(0, w))
 
-; (render w h angle small?) gives the rows of the image, top row first,
-; seen from the camera at that orbit angle. The camera is computed once
-; here and captured by the row closures, so it travels with the pieces.
-(def render (lambda (w h angle small?)
-  (let cam (camera (eye-at angle))
-    (pmap (lambda (j) (render-row j w h cam)) (range 0 h) small?))))
+# render(w, h, angle, small?) gives the rows of the image, top row first,
+# seen from the camera at that orbit angle. The camera is computed once
+# here and captured by the row closures, so it travels with the pieces.
+def render(w, h, angle, small?) =
+  let cam = camera(eye_at(angle)) in
+  pmap(fn(j) -> render_row(j, w, h, cam), range(0, h), small?)

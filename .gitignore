@@ -13,3 +13,5 @@
 Thumbs.db
 *.bmp
 *.gif
+/src/thunk_lexer.erl
+/src/thunk_parser.erl

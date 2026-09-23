@@ -1,170 +1,140 @@
-; Thunk prelude. Everything here is written in the language and is
-; loaded on every node before any program.
+# Thunk prelude. Everything here is written in the language and is
+# loaded on every node before any program.
 
-; (fold f init xs) applies f to an accumulator and each element in turn.
-; It is the sequential building block; nothing here is parallel.
-(def fold (lambda (f init xs)
-  (if (nil? xs)
-    init
-    (fold f (f init (head xs)) (tail xs)))))
+# fold(f, init, xs) applies f to an accumulator and each element in turn.
+# It is the sequential building block; nothing here is parallel.
+def fold(f, init, xs) =
+  if nil?(xs) then init
+  else fold(f, f(init, head(xs)), tail(xs))
 
-(def length (lambda (xs)
-  (fold (lambda (acc x) (add acc 1)) 0 xs)))
+def length(xs) = fold(fn(acc, x) -> acc + 1, 0, xs)
 
-(def reverse (lambda (xs)
-  (fold (lambda (acc x) (cons x acc)) () xs)))
+def reverse(xs) = fold(fn(acc, x) -> x :: acc, [], xs)
 
-(def append (lambda (xs ys)
-  (fold (lambda (acc x) (cons x acc)) ys (reverse xs))))
+def append(xs, ys) = fold(fn(acc, x) -> x :: acc, ys, reverse(xs))
 
-(def map (lambda (f xs)
-  (reverse (fold (lambda (acc x) (cons (f x) acc)) () xs))))
+def map(f, xs) = reverse(fold(fn(acc, x) -> f(x) :: acc, [], xs))
 
-(def filter (lambda (p xs)
-  (reverse (fold (lambda (acc x) (if (p x) (cons x acc) acc)) () xs))))
+def filter(p, xs) =
+  reverse(fold(fn(acc, x) -> if p(x) then x :: acc else acc, [], xs))
 
-; take-rev collects the first n elements in reverse order, so that take
-; runs in constant stack and reverses once at the end.
-(def take-rev (lambda (n xs acc)
-  (if (eq n 0)
-    acc
-    (if (nil? xs)
-      acc
-      (take-rev (sub n 1) (tail xs) (cons (head xs) acc))))))
+# take_rev collects the first n elements in reverse order, so that take
+# runs in constant stack and reverses once at the end.
+def take_rev(n, xs, acc) =
+  if n == 0 then acc
+  else if nil?(xs) then acc
+  else take_rev(n - 1, tail(xs), head(xs) :: acc)
 
-(def take (lambda (n xs)
-  (reverse (take-rev n xs ()))))
+def take(n, xs) = reverse(take_rev(n, xs, []))
 
-(def drop (lambda (n xs)
-  (if (eq n 0)
-    xs
-    (if (nil? xs)
-      ()
-      (drop (sub n 1) (tail xs))))))
+def drop(n, xs) =
+  if n == 0 then xs
+  else if nil?(xs) then []
+  else drop(n - 1, tail(xs))
 
-(def split-at (lambda (n xs)
-  (cons (take n xs) (cons (drop n xs) ()))))
+def split_at(n, xs) = take(n, xs) :: drop(n, xs) :: []
 
-(def halves (lambda (xs)
-  (split-at (div (length xs) 2) xs)))
+def halves(xs) = split_at(length(xs) / 2, xs)
 
-; Parallel library. dc is the only source of parallelism; pmap and
-; reduce are ordinary definitions on top of it. small? decides when a
-; list is solved directly and must be true for any list of length one.
+# Parallel library. dc is the only source of parallelism; pmap and
+# reduce are ordinary definitions on top of it. small? decides when a
+# list is solved directly and must be true for any list of length one.
+#
+# A closure keeps its whole environment, and the functions given to dc
+# travel with every piece. So the base cases are built by pmap_base and
+# reduce_base, where only f or op is in scope: written inline inside
+# pmap they would also capture xs and ship the entire input with every
+# stolen piece.
 
-;
-; A closure keeps its whole environment, and the functions given to dc
-; travel with every piece. So the base cases are built by pmap-base and
-; reduce-base, where only f or op is in scope: written inline inside
-; pmap they would also capture xs and ship the entire input with every
-; stolen piece.
+def pmap_base(f) = fn(v) -> map(f, v)
 
-(def pmap-base (lambda (f) (lambda (v) (map f v))))
+def pmap(f, xs, small?) = dc(xs, small?, halves, pmap_base(f), append)
 
-(def pmap (lambda (f xs small?)
-  (dc xs small? halves (pmap-base f) append)))
+def reduce_base(op) = fn(v) -> fold(op, head(v), tail(v))
 
-(def reduce-base (lambda (op) (lambda (v) (fold op (head v) (tail v)))))
+# reduce requires op to be associative. It is undefined on the empty list.
+def reduce(op, xs, small?) = dc(xs, small?, halves, reduce_base(op), op)
 
-; reduce requires op to be associative. It is undefined on the empty list.
-(def reduce (lambda (op xs small?)
-  (dc xs small? halves (reduce-base op) op)))
+# Sorting.
 
-; Sorting.
+def insert(x, sorted) =
+  if nil?(sorted) then x :: []
+  else if x < head(sorted) then x :: sorted
+  else head(sorted) :: insert(x, tail(sorted))
 
-(def insert (lambda (x sorted)
-  (if (nil? sorted)
-    (cons x ())
-    (if (lt x (head sorted))
-      (cons x sorted)
-      (cons (head sorted) (insert x (tail sorted)))))))
+def insertion_sort(xs) = fold(fn(acc, x) -> insert(x, acc), [], xs)
 
-(def insertion-sort (lambda (xs)
-  (fold (lambda (acc x) (insert x acc)) () xs)))
+# merge_rev builds the merged list in reverse, in constant stack. When
+# the elements are equal the left one goes first, so the sort is stable.
+def merge_rev(xs, ys, acc) =
+  if nil?(xs) then append(reverse(ys), acc)
+  else if nil?(ys) then append(reverse(xs), acc)
+  else if head(ys) < head(xs) then merge_rev(xs, tail(ys), head(ys) :: acc)
+  else merge_rev(tail(xs), ys, head(xs) :: acc)
 
-; merge-rev builds the merged list in reverse, in constant stack. When
-; the elements are equal the left one goes first, so the sort is stable.
-(def merge-rev (lambda (xs ys acc)
-  (if (nil? xs)
-    (append (reverse ys) acc)
-    (if (nil? ys)
-      (append (reverse xs) acc)
-      (if (lt (head ys) (head xs))
-        (merge-rev xs (tail ys) (cons (head ys) acc))
-        (merge-rev (tail xs) ys (cons (head xs) acc)))))))
+def merge_sorted(xs, ys) = reverse(merge_rev(xs, ys, []))
 
-(def merge-sorted (lambda (xs ys)
-  (reverse (merge-rev xs ys ()))))
+def mergesort(xs, small?) = dc(xs, small?, halves, insertion_sort, merge_sorted)
 
-(def mergesort (lambda (xs small?)
-  (dc xs small? halves insertion-sort merge-sorted)))
+# Strings. Text arrives as a list of codepoints (see the chars primitive);
+# words are turned back into strings so they compare cheaply.
 
-; Strings. Text arrives as a list of codepoints (see the chars primitive);
-; words are turned back into strings so they compare cheaply.
+def whitespace?(c) =
+  if c == 32 then true
+  else if c == 10 then true
+  else if c == 9 then true
+  else c == 13
 
-(def whitespace? (lambda (c)
-  (if (eq c 32) true (if (eq c 10) true (if (eq c 9) true (eq c 13))))))
+# flush adds the pending word (kept in reverse) to the accumulator.
+def flush(word, acc) =
+  if nil?(word) then acc else string(reverse(word)) :: acc
 
-; flush adds the pending word (kept in reverse) to the accumulator.
-(def flush (lambda (word acc)
-  (if (nil? word) acc (cons (string (reverse word)) acc))))
+def split_words_rev(cs, word, acc) =
+  if nil?(cs) then flush(word, acc)
+  else if whitespace?(head(cs)) then split_words_rev(tail(cs), [], flush(word, acc))
+  else split_words_rev(tail(cs), head(cs) :: word, acc)
 
-(def split-words-rev (lambda (cs word acc)
-  (if (nil? cs)
-    (flush word acc)
-    (if (whitespace? (head cs))
-      (split-words-rev (tail cs) () (flush word acc))
-      (split-words-rev (tail cs) (cons (head cs) word) acc)))))
+def split_words(cs) = reverse(split_words_rev(cs, [], []))
 
-(def split-words (lambda (cs)
-  (reverse (split-words-rev cs () ()))))
+# Association lists of [key, value] pairs. A deliberately simple
+# dictionary; a balanced tree can replace it if measurements say so.
 
-; Association lists of (key value) pairs. A deliberately simple
-; dictionary; a balanced tree can replace it if measurements say so.
+def assoc_get(k, al, default) =
+  if nil?(al) then default
+  else if head(head(al)) == k then head(tail(head(al)))
+  else assoc_get(k, tail(al), default)
 
-(def assoc-get (lambda (k al default)
-  (if (nil? al)
-    default
-    (if (eq (head (head al)) k)
-      (head (tail (head al)))
-      (assoc-get k (tail al) default)))))
+def assoc_inc(k, n, al) =
+  if nil?(al) then (k :: n :: []) :: []
+  else if head(head(al)) == k then (k :: n + head(tail(head(al))) :: []) :: tail(al)
+  else head(al) :: assoc_inc(k, n, tail(al))
 
-(def assoc-inc (lambda (k n al)
-  (if (nil? al)
-    (cons (cons k (cons n ())) ())
-    (if (eq (head (head al)) k)
-      (cons (cons k (cons (add n (head (tail (head al)))) ())) (tail al))
-      (cons (head al) (assoc-inc k n (tail al)))))))
+def assoc_merge(a, b) =
+  fold(fn(acc, entry) -> assoc_inc(head(entry), head(tail(entry)), acc), a, b)
 
-(def assoc-merge (lambda (a b)
-  (fold (lambda (acc entry) (assoc-inc (head entry) (head (tail entry)) acc)) a b)))
+def count_words(words) = fold(fn(acc, w) -> assoc_inc(w, 1, acc), [], words)
 
-(def count-words (lambda (words)
-  (fold (lambda (acc w) (assoc-inc w 1 acc)) () words)))
+# Word count demo. Tokenizing is sequential here; only the counting is
+# divided. Splitting the text itself in parallel is a later refinement.
+def word_count(text, small?) =
+  dc(split_words(chars(text)), small?, halves, count_words, assoc_merge)
 
-; Word count demo. Tokenizing is sequential here; only the counting is
-; divided. Splitting the text itself in parallel is a later refinement.
-(def word-count (lambda (text small?)
-  (dc (split-words (chars text)) small? halves count-words assoc-merge)))
+# Integers and ranges.
 
-; Integers and ranges.
+def max(a, b) = if a < b then b else a
 
-(def max (lambda (a b) (if (lt a b) b a)))
+def min(a, b) = if a < b then a else b
 
-(def min (lambda (a b) (if (lt a b) a b)))
+# range(from, to) is the list from, from + 1, ..., to - 1.
+def range_rev(i, to, acc) =
+  if i < to then range_rev(i + 1, to, i :: acc) else acc
 
-; (range from to) is the list from, from+1, ..., to-1.
-(def range-rev (lambda (i to acc)
-  (if (lt i to) (range-rev (add i 1) to (cons i acc)) acc)))
+def range(from, to) = reverse(range_rev(from, to, []))
 
-(def range (lambda (from to)
-  (reverse (range-rev from to ()))))
+# Integer square root by Newton's method, starting from n and going
+# down until the estimate stops decreasing.
+def isqrt_iter(n, x) =
+  let y = (x + n / x) / 2 in
+  if y < x then isqrt_iter(n, y) else x
 
-; Integer square root by Newton's method, starting from n and going
-; down until the estimate stops decreasing.
-(def isqrt-iter (lambda (n x)
-  (let y (div (add x (div n x)) 2)
-    (if (lt y x) (isqrt-iter n y) x))))
-
-(def isqrt (lambda (n)
-  (if (lt n 2) n (isqrt-iter n n))))
+def isqrt(n) = if n < 2 then n else isqrt_iter(n, n)

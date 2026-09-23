@@ -6,6 +6,7 @@ ENV MIX_ENV=prod
 COPY mix.exs .formatter.exs ./
 COPY lib lib
 COPY priv priv
+COPY src src
 RUN mix compile
 
 # Short node names use the container hostname (or id for scaled replicas).

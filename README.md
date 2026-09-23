@@ -22,17 +22,29 @@ run. Termination detection and memoization remain optional extensions.
 
 ## The language
 
-Programs are S-expressions. The core has five special forms (`lambda`, `if`,
-`let`, `def`, `dc`) and thirteen primitives (`add sub mul div mod lt eq cons
-head tail nil? chars string`). Everything else, including `map`, `fold`,
-`pmap`, `reduce` and `mergesort`, is defined in `priv/prelude.thunk` in the
-language itself.
+A program is a sequence of definitions. Everything is an expression:
+`fn` makes a function, `let x = e in body` binds one name, `if c then a
+else b` chooses a branch, and `f(x, y)` is a call.
+
+```text
+def isqrt_iter(n, x) =
+  let y = (x + n / x) / 2 in
+  if y < x then isqrt_iter(n, y) else x
+```
+
+There are thirteen primitives (`add sub mul div mod lt eq cons head tail
+nil? chars string`); the operators `+ - * / % < == ::` are their infix
+forms, and `[]` is the empty list. Everything else, including `map`,
+`fold`, `pmap`, `reduce` and `mergesort`, is defined in
+`priv/prelude.thunk` in the language itself. The tokens and the grammar
+are in `src/thunk_lexer.xrl` and `src/thunk_parser.yrl`, compiled by
+leex and yecc; the parser turns a program into nested lists that the
+evaluator walks.
 
 `dc` is the only parallel form:
 
-```lisp
-(def mergesort (lambda (xs small?)
-  (dc xs small? halves insertion-sort merge-sorted)))
+```text
+def mergesort(xs, small?) = dc(xs, small?, halves, insertion_sort, merge_sorted)
 ```
 
 It takes a value, a predicate that says when a value is solved directly, a
@@ -41,7 +53,7 @@ node solves each piece is up to the scheduler; the result is the same.
 
 ```elixir
 ctx = Thunk.Prelude.load()
-ctx = Thunk.load("(def main (lambda (xs) (mergesort xs (lambda (v) (lt (length v) 8)))))", ctx)
+ctx = Thunk.load("def main(xs) = mergesort(xs, fn(v) -> length(v) < 8)", ctx)
 Thunk.run(ctx, [3, 1, 2])
 Thunk.run(Thunk.with_scheduler(ctx, Thunk.Scheduler.Local), [3, 1, 2])
 ```

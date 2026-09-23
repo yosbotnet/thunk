@@ -28,18 +28,18 @@ defmodule Thunk.DemoTest do
       xs = random_list()
       ctx = Thunk.with_scheduler(ctx, scheduler)
 
-      assert Thunk.eval("(mergesort xs (lambda (v) (lt (length v) 8)))", ctx, %{xs: xs}) ==
+      assert Thunk.eval("mergesort(xs, fn(v) -> length(v) < 8)", ctx, %{xs: xs}) ==
                Enum.sort(xs)
     end
   end
 
-  test "word-count agrees with a native count under every scheduler", %{ctx: ctx} do
+  test "word_count agrees with a native count under every scheduler", %{ctx: ctx} do
     for scheduler <- @schedulers, _ <- 1..10 do
       text = random_text()
       ctx = Thunk.with_scheduler(ctx, scheduler)
 
       result =
-        Thunk.eval("(word-count text (lambda (v) (lt (length v) 16)))", ctx, %{text: text})
+        Thunk.eval("word_count(text, fn(v) -> length(v) < 16)", ctx, %{text: text})
 
       expected = text |> String.split() |> Enum.frequencies()
       assert Map.new(result, fn [word, n] -> {word, n} end) == expected
@@ -49,7 +49,7 @@ defmodule Thunk.DemoTest do
 
   test "a program file with a main runs end to end", %{ctx: ctx} do
     program = """
-    (def main (lambda (xs) (mergesort xs (lambda (v) (lt (length v) 4)))))
+    def main(xs) = mergesort(xs, fn(v) -> length(v) < 4)
     """
 
     ctx = Thunk.load(program, Thunk.with_scheduler(ctx, Local))

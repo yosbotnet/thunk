@@ -3,7 +3,7 @@ defmodule Thunk.MandelbrotTest do
 
   alias Thunk.Scheduler.{Local, Sequential}
 
-  @main "(def main (lambda (d) (render (head d) (head (tail d)) (head (tail (tail d))) (lambda (rows) (lt (length rows) 4)))))"
+  @main "def main(d) = render(head(d), head(tail(d)), head(tail(tail(d))), fn(rows) -> length(rows) < 4)"
 
   setup_all do
     program = File.read!(Path.join(:code.priv_dir(:thunk), "demos/mandelbrot.thunk")) <> @main
@@ -14,13 +14,13 @@ defmodule Thunk.MandelbrotTest do
 
   test "points inside the set reach the iteration limit", %{ctx: ctx} do
     # the origin and -1 are in the set
-    assert ev(ctx, "(escape-time 0 0 50)") == 50
-    assert ev(ctx, "(escape-time (sub 0 one) 0 50)") == 50
+    assert ev(ctx, "escape_time(0, 0, 50)") == 50
+    assert ev(ctx, "escape_time(-one, 0, 50)") == 50
   end
 
   test "points outside the set escape, far ones immediately", %{ctx: ctx} do
-    assert ev(ctx, "(escape-time (mul 2 one) (mul 2 one) 50)") <= 1
-    n = ev(ctx, "(escape-time (div one 2) (div one 2) 50)")
+    assert ev(ctx, "escape_time(2 * one, 2 * one, 50)") <= 1
+    n = ev(ctx, "escape_time(one / 2, one / 2, 50)")
     assert n > 1 and n < 50
   end
 
@@ -36,7 +36,7 @@ defmodule Thunk.MandelbrotTest do
     end
 
     for {cr, ci} <- [{-0.1, 0.1}, {0.4, 0.4}, {-1.9, 0.3}, {0.3, -0.6}, {-0.75, 0.3}] do
-      fixed = ev(ctx, "(escape-time a b 60)", %{a: round(cr * 65536), b: round(ci * 65536)})
+      fixed = ev(ctx, "escape_time(a, b, 60)", %{a: round(cr * 65536), b: round(ci * 65536)})
       assert abs(fixed - float_escape.(cr, ci, 60)) <= 1
     end
   end
