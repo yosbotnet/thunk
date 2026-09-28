@@ -1,0 +1,24 @@
+% Mandelbrot 640x480 on laptop + server with different piece sizes, median
+% of three runs; the laptop alone (fine pieces) is the reference.
+\begin{tikzpicture}
+  \begin{axis}[
+      thunkplot,
+      width=0.8\textwidth, height=52mm,
+      xmode=log, x dir=reverse,
+      xmin=2, xmax=360,
+      xtick={3,15,60,120,240},
+      xticklabels={3,15,60,120,240},
+      xlabel={rows per piece},
+      ymin=0, ymax=16,
+      ytick={0,4,8,12,16},
+      ymajorgrids,
+      ylabel={median job time (s)},
+    ]
+    \draw[refline] (axis cs:360,5.87) -- (axis cs:2,5.87)
+      node[pos=0.01, anchor=south west, font=\scriptsize, text=textsecondary] {laptop alone, 5.87 s};
+    \addplot[thunkline, color=series1] coordinates {(240,12.01) (120,14.03) (60,8.92) (15,6.01) (3,4.65)};
+    \node[font=\scriptsize, anchor=south, yshift=2pt, text=textprimary] at (axis cs:120,14.03) {14.0 s};
+    \node[font=\scriptsize, anchor=north, yshift=-3pt, text=textprimary] at (axis cs:3,4.65) {4.65 s};
+    \node[font=\scriptsize, anchor=south west, text=series1] at (axis cs:60,8.92) {laptop + server};
+  \end{axis}
+\end{tikzpicture}

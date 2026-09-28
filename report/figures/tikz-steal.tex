@@ -1,0 +1,29 @@
+\begin{tikzpicture}[
+      >=Stealth,
+      hd/.style={draw, rounded corners=2pt, font=\scriptsize, minimum width=19mm, minimum height=6mm, fill=white},
+      msg/.style={->, font=\scriptsize},
+      lbl/.style={font=\scriptsize, fill=white, inner sep=1pt}]
+    \def\yend{-8.9}
+    \foreach \n/\x/\t in {o/0/owner evaluator, a/3.3/worker A, b/6.6/worker B, t/9.9/thief evaluator} {
+      \node[hd] (h\n) at (\x, 0) {\t};
+    }
+    \draw[dashed, black!40] (0,-0.3) -- (0,\yend);
+    \draw[dashed, black!40] (3.3,-0.3) -- (3.3,\yend);
+    \draw[dashed, black!40] (6.6,-0.3) -- (6.6,\yend);
+    \draw[dashed, black!40] (9.9,-2.9) -- (9.9,\yend);
+    \draw[msg] (0,-0.9) -- node[lbl, above] {push(piece)} (3.3,-0.9);
+    \draw[msg] (6.6,-1.5) -- node[lbl, above] {steal} (3.3,-1.5);
+    \draw[msg] (3.3,-2.1) -- node[lbl, above] {piece} (6.6,-2.1);
+    \draw[msg] (6.6,-2.7) -- node[lbl, above] {start} (9.9,-2.7);
+    \node[font=\scriptsize, fill=white, right] at (0.1,-3.3) {computes its left half};
+    \draw[msg] (6.6,-3.9) -- node[lbl, above, pos=0.7] {claimed} (0,-3.9);
+    \draw[msg] (0,-4.5) -- node[lbl, above] {take back} (3.3,-4.5);
+    \draw[msg, dashed] (3.3,-5.0) -- node[lbl, above] {stolen by B} (0,-5.0);
+    \node[font=\scriptsize, fill=white, right] at (0.1,-5.6) {monitors E, waits};
+    \draw[msg, thick] (9.9,-6.2) -- node[lbl, above, pos=0.8] {result} (0,-6.2);
+    \node[font=\scriptsize, fill=white, right] at (0.1,-6.8) {merges};
+    \draw[black!60, rounded corners=2pt] (-1.2,-7.2) rectangle (11.1,-8.75);
+    \node[font=\scriptsize\itshape, anchor=north west, inner sep=1pt, fill=white] at (-1.15,-7.25) {alternative: E dies or node B is lost};
+    \draw[msg] (6.6,-8.05) -- node[lbl, above, pos=0.5] {failed, or monitor notification} (0,-8.05);
+    \node[font=\scriptsize, fill=white, right] at (0.1,-8.5) {solves the piece itself};
+  \end{tikzpicture}

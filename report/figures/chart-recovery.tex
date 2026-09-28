@@ -1,0 +1,20 @@
+% Rendering of a 1280x960 image, with and without a node killed after two
+% seconds. One series; the labels carry the number of recomputed pieces.
+\begin{tikzpicture}
+  \begin{axis}[
+      thunkplot, thunkhbar,
+      width=0.8\textwidth, height=36mm,
+      symbolic y coords={k2, k1, ok},
+      ytick={k2, k1, ok},
+      yticklabels={node killed (run 2), node killed (run 1), no failure},
+      enlarge y limits=0.3,
+      xmin=0, xmax=18,
+      xlabel={job time (s)},
+    ]
+    \addplot[fill=series1] coordinates {
+      (4.7,ok) [4.7 s]
+      (11.6,k1) [11.6 s, 2 pieces recomputed]
+      (12.4,k2) [12.4 s, 1 piece recomputed]
+    };
+  \end{axis}
+\end{tikzpicture}

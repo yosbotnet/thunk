@@ -1,0 +1,26 @@
+% Job time under each scheduler, on the same machine. One series per panel.
+\begin{tikzpicture}
+  \begin{groupplot}[
+      thunkplot, thunkhbar,
+      group style={group size=2 by 1, horizontal sep=6mm, yticklabels at=edge left},
+      width=0.46\textwidth, height=34mm,
+      symbolic y coords={clu, loc, seq},
+      ytick={clu, loc, seq},
+      yticklabels={cluster (3 nodes), local processes, sequential},
+      enlarge y limits=0.28,
+      xlabel={job time (s)},
+    ]
+    \nextgroupplot[title={mergesort, 100\,000 integers}, xmin=0, xmax=17]
+    \addplot[fill=series1] coordinates {
+      (12.7,seq) [12.7 s]
+      (3.2,loc) [3.2 s]
+      (3.0,clu) [3.0 s]
+    };
+    \nextgroupplot[title={cube, $640\times480$}, xmin=0, xmax=7.5]
+    \addplot[fill=series1] coordinates {
+      (5.6,seq) [5.6 s]
+      (1.1,loc) [1.1 s]
+      (1.4,clu) [1.3--1.5 s]
+    };
+  \end{groupplot}
+\end{tikzpicture}

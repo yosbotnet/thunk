@@ -1,0 +1,23 @@
+% Median job time over five runs on a laptop node and a VPS node, each with
+% four schedulers, 22 ms apart. The configuration using both machines is
+% highlighted; the single-machine configurations are the reference.
+\begin{tikzpicture}
+  \begin{groupplot}[
+      thunkplot, thunkhbar,
+      group style={group size=2 by 1, horizontal sep=6mm, yticklabels at=edge left},
+      width=0.46\textwidth, height=34mm,
+      symbolic y coords={both, vps, lap},
+      ytick={both, vps, lap},
+      yticklabels={laptop + server, server only, laptop only},
+      enlarge y limits=0.28,
+      every axis plot/.append style={/pgf/bar shift=0pt},
+      xlabel={median job time (s)},
+    ]
+    \nextgroupplot[title={cube, $1280\times960$}, xmin=0, xmax=11.5]
+    \addplot[fill=axisline!55] coordinates {(7.43,lap) [7.43 s] (8.64,vps) [8.64 s]};
+    \addplot[fill=series1] coordinates {(4.93,both) [4.93 s]};
+    \nextgroupplot[title={mergesort, 100\,000 integers}, xmin=0, xmax=7.8]
+    \addplot[fill=axisline!55] coordinates {(4.32,lap) [4.32 s] (5.85,vps) [5.85 s]};
+    \addplot[fill=series1] coordinates {(3.60,both) [3.60 s]};
+  \end{groupplot}
+\end{tikzpicture}

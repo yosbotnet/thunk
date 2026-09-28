@@ -1,0 +1,41 @@
+% Mergesort of 100000 integers on the cluster at four thresholds. Two panels
+% on a shared threshold axis instead of one plot with two y scales.
+\begin{tikzpicture}
+  \begin{groupplot}[
+      thunkplot,
+      group style={group size=2 by 1, horizontal sep=17mm},
+      width=0.47\textwidth, height=52mm,
+      xmode=log, x dir=reverse,
+      xmin=5, xmax=8000,
+      xtick={8,250,1000,5000},
+      xticklabels={8,250,1000,5000},
+      xlabel={threshold (elements per piece)},
+      grid=major,
+    ]
+    \nextgroupplot[
+      title={job time},
+      ymin=0, ymax=20,
+      ylabel={job time (s)},
+    ]
+    \draw[refline] (axis cs:8000,12.7) -- (axis cs:5,12.7)
+      node[pos=0.5, above, font=\scriptsize, text=textsecondary] {sequential, 12.7 s};
+    \addplot[thunkline, color=series1] coordinates {(5000,11.0) (1000,3.0) (250,2.2) (8,17.4)};
+    \node[font=\scriptsize, anchor=south west, xshift=3pt, text=textprimary] at (axis cs:250,2.2) {2.2 s};
+    \node[font=\scriptsize, anchor=east, text=textprimary] at (axis cs:8,17.4) {17.4 s};
+
+    \nextgroupplot[
+      title={work exchanged},
+      ymode=log, ymin=5, ymax=5000,
+      ytick={10,100,1000},
+      yticklabels={10,100,1000},
+      ylabel={count per job},
+      legend style={at={(0.03,0.97)}, anchor=north west},
+    ]
+    \addplot[thunkline, color=series2, mark=square*] coordinates {(5000,31) (1000,83) (250,145) (8,1955)};
+    \addlegendentry{pieces computed}
+    \addplot[thunkline, color=series1] coordinates {(5000,15) (1000,15) (250,14) (8,33)};
+    \addlegendentry{steals}
+    \node[font=\scriptsize, anchor=east, text=textprimary] at (axis cs:8,1955) {1955};
+    \node[font=\scriptsize, anchor=north, text=textprimary] at (axis cs:8,33) {33};
+  \end{groupplot}
+\end{tikzpicture}

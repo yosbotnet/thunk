@@ -1,0 +1,14 @@
+\begin{tikzpicture}[
+    >=Stealth,
+    st/.style={draw, rounded corners=6pt, minimum width=26mm, minimum height=10mm, align=center, font=\small},
+    tr/.style={->, font=\scriptsize, align=center}]
+  \node[st] (busy) at (0,0) {working\\\scriptsize deque not empty or\\\scriptsize limit reached};
+  \node[st] (steal) at (7.6,0) {stealing\\\scriptsize one request\\\scriptsize in flight};
+  \node[st] (wait) at (7.6,-3.6) {backing off\\\scriptsize timer armed};
+  \draw[tr] (busy.north east) to[bend left=18] node[above] {evaluator ends, deque empty} (steal.north west);
+  \draw[tr] (steal.south west) to[bend left=18] node[below, pos=0.72] {piece received:\\start evaluator, reset back-off} (busy.south east);
+  \draw[tr] (steal) edge[loop right, looseness=5] node[right] {timer, no reply:\\new victim} (steal);
+  \draw[tr] ([xshift=-7mm]steal.south) -- node[left, pos=0.6] {none:\\double back-off} ([xshift=-7mm]wait.north);
+  \draw[tr] ([xshift=7mm]wait.north) -- node[right, pos=0.4] {timer:\\ask a random peer} ([xshift=7mm]steal.south);
+  \draw[tr] (wait.west) -| node[below, pos=0.25] {local push} (busy.south);
+\end{tikzpicture}

@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant O as owner evaluator
+    participant A as worker A
+    participant B as worker B
+    participant E as thief evaluator (E)
+    O->>A: push(piece)
+    B->>A: steal
+    A->>B: piece
+    B->>E: start
+    Note over O: computes its left half
+    B->>O: claimed (E is computing it)
+    O->>A: take back
+    A-->>O: stolen by B
+    Note over O: monitors E, waits
+    E->>O: result
+    Note over O: merges
+    alt E dies or node B is lost
+        B->>O: failed, or monitor notification
+        Note over O: solves the piece itself
+    end

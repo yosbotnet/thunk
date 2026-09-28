@@ -1,0 +1,14 @@
+stateDiagram-v2
+    working: working<br/>deque not empty or limit reached
+    stealing: stealing<br/>one request in flight
+    backoff: backing off<br/>timer armed
+    [*] --> working
+    working --> stealing: evaluator ends,<br/>deque empty
+    stealing --> working: piece received,<br/>reset back-off,<br/>start evaluator
+    stealing --> backoff: none,<br/>double back-off
+    backoff --> stealing: timer,<br/>ask a random peer
+    backoff --> working: local push
+    note right of stealing
+        no reply before the timer fires:
+        double back-off, ask another victim at once
+    end note

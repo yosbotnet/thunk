@@ -1,0 +1,59 @@
+\begin{tikzpicture}[
+    >=Stealth,
+    ev/.style={draw, circle, minimum size=6mm, inner sep=0pt, font=\scriptsize},
+    pc/.style={draw, rounded corners=1.5pt, minimum size=6mm, inner sep=0pt, font=\scriptsize, fill=black!8},
+    tag/.style={font=\tiny, text=textsecondary, inner sep=1pt},
+    lbl/.style={font=\scriptsize, fill=white, inner sep=1pt},
+    path/.style={series1, line width=1.2pt},
+    push/.style={black!45, line width=0.5pt, dashed},
+    sub/.style={fill=black!4, draw=black!25, line width=0.4pt, rounded corners=2pt},
+    cell/.style={draw, fill=black!8, minimum height=7mm, inner sep=0pt, font=\scriptsize}]
+
+  % Subtrees still inside the two largest pushed pieces.
+  \fill[sub] (2.4,-1.45) -- (0.5,-4.55) -- (4.3,-4.55) -- cycle;
+  \node[tag, align=center] at (2.4,-3.7) {7 more splits,\\done by whoever takes it};
+  \fill[sub] (-1.1,-2.55) -- (-2.05,-4.55) -- (-0.15,-4.55) -- cycle;
+
+  % The evaluator's own path, always the left half.
+  \node[ev] (r) at (0,0) {16};
+  \node[ev] (a1) at (-2.4,-1.1) {8};
+  \node[ev] (a2) at (-3.7,-2.2) {4};
+  \node[ev] (a3) at (-4.45,-3.3) {2};
+  \node[ev, fill=series1!15, draw=series1] (a4) at (-4.9,-4.4) {1};
+  \draw[path] (r) -- (a1);
+  \draw[path] (a1) -- (a2);
+  \draw[path] (a2) -- (a3);
+  \draw[path] (a3) -- (a4);
+  \node[tag, below=1pt of a4, text=series1] {evaluator here};
+
+  % The right halves, pushed to the deque on the way down.
+  \node[pc] (p1) at (2.4,-1.1) {8};
+  \node[pc] (p2) at (-1.1,-2.2) {4};
+  \node[pc] (p3) at (-2.95,-3.3) {2};
+  \node[pc] (p4) at (-4.0,-4.4) {1};
+  \draw[push] (r) -- (p1);
+  \draw[push] (a1) -- (p2);
+  \draw[push] (a2) -- (p3);
+  \draw[push] (a3) -- (p4);
+  \foreach \p/\n in {p1/1, p2/2, p3/3, p4/4}
+    \node[tag, anchor=south west] at (\p.north east) {\n};
+
+  % The deque, in push order: oldest on the left, newest on the right.
+  \node[cell, minimum width=24mm] (d1) at (-2.0,-6.3) {8 elements};
+  \node[cell, minimum width=14mm, right=0pt of d1] (d2) {4};
+  \node[cell, minimum width=9mm, right=0pt of d2] (d3) {2};
+  \node[cell, minimum width=7mm, right=0pt of d3] (d4) {1};
+  \foreach \d/\n in {d1/1, d2/2, d3/3, d4/4}
+    \node[tag, anchor=south] at (\d.north) {push \n};
+  \node[font=\scriptsize, anchor=south] at ([yshift=3.5mm]$(d1.north west)!0.5!(d4.north east)$) {deque of the worker};
+
+  \node[font=\scriptsize, align=center, text=series2] (thief) at (-6.1,-6.3) {thief\\\tiny(another node)};
+  \node[font=\scriptsize, align=center, text=series1] (own) at (4.3,-6.3) {own\\evaluators};
+  \draw[->, series2, line width=1pt] (d1.west) -- (thief.east);
+  \draw[->, series1, line width=1pt] (d4.east) -- (own.west);
+
+  \node[font=\scriptsize, align=center, anchor=north, text=series2] at (-4.2,-6.95)
+    {takes the \textbf{oldest}: the largest piece,\\a whole subtree for one round trip};
+  \node[font=\scriptsize, align=center, anchor=north, text=series1] at (2.4,-6.95)
+    {take the \textbf{newest}: the smallest piece,\\next in depth-first order, data local};
+\end{tikzpicture}
